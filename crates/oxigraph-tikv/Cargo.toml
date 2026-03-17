@@ -1,0 +1,21 @@
+[package]
+name = "oxigraph-tikv"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "TiKV storage backend for Oxigraph"
+
+[features]
+default = []
+integration-tests = []
+
+[dependencies]
+oxigraph.workspace = true
+tikv-client.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true

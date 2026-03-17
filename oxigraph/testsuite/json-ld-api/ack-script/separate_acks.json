@@ -1,0 +1,49 @@
+[
+    {
+        "name": "Pierre-Antoine Champin",
+        "editor" : true
+    },
+    {
+        "name": "Timothy Cole"
+    },
+    {
+        "name": "Ivan Herman"
+    },
+    {
+        "name": "Gregg Kellogg",
+        "editor": true
+    },
+    {
+        "name": "Jeff Mixter"
+    },
+    {
+        "name": "Dave Longley",
+        "editor" : true
+    },
+    {
+        "name": "David Lehn"
+    },
+    {
+        "name": "David Newbury"
+    },
+    {
+        "name": "Robert Sanderson",
+        "chair": true
+    },
+    {
+        "name": "Harold Solbrig"
+    },
+    {
+        "name": "Simon Steyskal"
+    },
+    {
+        "name": "A Soroka"
+    },
+    {
+        "name": "Ruben Taelman"
+    },
+    {
+        "name": "Benjamin Young",
+        "chair": true
+    }
+]

@@ -1,0 +1,151 @@
+{{- if and .Values.tls.enabled (eq .Values.backend "tikv") }}
+# =============================================================================
+# cert-manager Certificate resources for mTLS between Oxigraph and TiKV/PD
+# Requires: cert-manager installed in the cluster
+# Addresses: SEC-03 (encryption at rest key delivery) and SEC-13 (mTLS)
+# =============================================================================
+
+{{- if .Values.tls.selfSignedCA }}
+---
+# Self-signed issuer (bootstrap only -- signs the CA certificate)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-selfsigned
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+# CA certificate (used as trust root for all component certificates)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-ca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ include "oxigraph-cloud.fullname" . }}-ca
+  secretName: {{ include "oxigraph-cloud.fullname" . }}-ca-secret
+  duration: 87600h    # 10 years
+  renewBefore: 8760h  # 1 year
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ include "oxigraph-cloud.fullname" . }}-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+# CA issuer (signs TiKV, PD, and Oxigraph client certificates)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-ca-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ include "oxigraph-cloud.fullname" . }}-ca-secret
+{{- end }}
+---
+# TiKV server certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-tikv-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "oxigraph-cloud.fullname" . }}-tikv-server-tls
+  duration: {{ .Values.tls.duration | default "8760h" }}
+  renewBefore: {{ .Values.tls.renewBefore | default "720h" }}
+  commonName: tikv
+  dnsNames:
+    - "tikv"
+    - "tikv.{{ .Release.Namespace }}.svc"
+    - "tikv.{{ .Release.Namespace }}.svc.cluster.local"
+    - "*.tikv.{{ .Release.Namespace }}.svc.cluster.local"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    {{- if and .Values.tls.certManager .Values.tls.certManager.issuerName }}
+    name: {{ .Values.tls.certManager.issuerName }}
+    kind: {{ .Values.tls.certManager.issuerKind | default "Issuer" }}
+    {{- else }}
+    name: {{ include "oxigraph-cloud.fullname" . }}-ca-issuer
+    kind: Issuer
+    {{- end }}
+    group: cert-manager.io
+---
+# PD server certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-pd-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "oxigraph-cloud.fullname" . }}-pd-server-tls
+  duration: {{ .Values.tls.duration | default "8760h" }}
+  renewBefore: {{ .Values.tls.renewBefore | default "720h" }}
+  commonName: pd
+  dnsNames:
+    - "pd"
+    - "pd.{{ .Release.Namespace }}.svc"
+    - "pd.{{ .Release.Namespace }}.svc.cluster.local"
+    - "*.pd.{{ .Release.Namespace }}.svc.cluster.local"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    {{- if and .Values.tls.certManager .Values.tls.certManager.issuerName }}
+    name: {{ .Values.tls.certManager.issuerName }}
+    kind: {{ .Values.tls.certManager.issuerKind | default "Issuer" }}
+    {{- else }}
+    name: {{ include "oxigraph-cloud.fullname" . }}-ca-issuer
+    kind: Issuer
+    {{- end }}
+    group: cert-manager.io
+---
+# Oxigraph client certificate (for authenticating to TiKV and PD)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-client
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "oxigraph-cloud.fullname" . }}-client-tls
+  duration: {{ .Values.tls.duration | default "8760h" }}
+  renewBefore: {{ .Values.tls.renewBefore | default "720h" }}
+  commonName: oxigraph-client
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - client auth
+  issuerRef:
+    {{- if and .Values.tls.certManager .Values.tls.certManager.issuerName }}
+    name: {{ .Values.tls.certManager.issuerName }}
+    kind: {{ .Values.tls.certManager.issuerKind | default "Issuer" }}
+    {{- else }}
+    name: {{ include "oxigraph-cloud.fullname" . }}-ca-issuer
+    kind: Issuer
+    {{- end }}
+    group: cert-manager.io
+{{- end }}

@@ -1,0 +1,56 @@
+# Build artifacts
+/target/
+/oxigraph/target/
+
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Environment and secrets
+.env
+*.key
+*.pem
+*.p12
+
+# Java binaries (from upstream test suites)
+*.jar
+
+# Large test fixtures not needed for our project
+oxigraph/testsuite/N3/tests/N3Tests/01etc/*_proof.n3
+oxigraph/testsuite/N3/tests/N3Tests/01etc/proof-*.n3
+oxigraph/testsuite/N3/tests/N3Tests/01etc/data.n3
+oxigraph/testsuite/N3/tests/N3Tests/04test/not-galen.n3
+oxigraph/testsuite/N3/useOfBuiltins/core-specs/01-analysis/content-aggregation/SaxonHE11-3J/
+oxigraph/testsuite/N3/useOfBuiltins/core-specs/01-analysis/content-aggregation/xpath-functions/
+
+# Large generated reports
+oxigraph/testsuite/**/reports/earl.jsonld
+oxigraph/testsuite/**/reports/earl.html
+oxigraph/testsuite/**/reports/index.html
+
+# Source maps
+*.js.map
+
+# TiKV dev cluster data (created by docker-compose)
+pd0-data/
+tikv0-data/
+tikv1-data/
+tikv2-data/
+
+# Chaos test results
+/tmp/chaos-test-results/
+
+# Helm packaging artifacts
+helm/oxigraph-cloud/*.tgz
+helm/oxigraph-cloud/charts/
+
+# Python build artifacts (from upstream oxigraph)
+__pycache__/
+*.pyc
+*.egg-info/
+dist/

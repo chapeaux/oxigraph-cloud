@@ -1,0 +1,137 @@
+# docker-compose.tikv.yml
+#
+# Local TiKV development cluster: 1 PD + 3 TiKV nodes.
+#
+# Usage:
+#   docker compose -f docker-compose.tikv.yml up -d
+#   docker compose -f docker-compose.tikv.yml down          # stop, keep volumes
+#   docker compose -f docker-compose.tikv.yml down -v        # stop and delete data
+#
+# PD client endpoint (from host): 127.0.0.1:2379
+# Use with: --pd-endpoints 127.0.0.1:2379
+#
+
+services:
+
+  # ---------------------------------------------------------------
+  # PD (Placement Driver)
+  # Manages cluster metadata, timestamp allocation, and Region
+  # scheduling.  Exactly one instance is sufficient for dev/CI.
+  # The client port (2379) is exposed to the host so the Rust
+  # tikv-client crate can connect directly.
+  # ---------------------------------------------------------------
+  pd0:
+    image: docker.io/pingcap/pd:latest
+    container_name: oxigraph-pd0
+    ports:
+      - "2379:2379"       # PD client port -- used by tikv-client
+      - "2380:2380"       # PD peer port   -- internal only but useful for debugging
+    volumes:
+      - pd0-data:/data    # persist PD metadata across restarts
+    command:
+      - --name=pd0
+      - --data-dir=/data
+      - --client-urls=http://0.0.0.0:2379
+      - --peer-urls=http://0.0.0.0:2380
+      - --advertise-client-urls=http://pd0:2379
+      - --advertise-peer-urls=http://pd0:2380
+      - --initial-cluster=pd0=http://pd0:2380
+    healthcheck:
+      # PD exposes a health endpoint on its client port.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2379/pd/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------
+  # TiKV node 0
+  # Stores key-value data in RocksDB, managed by PD.  Each node
+  # advertises a unique address so PD can distinguish them.
+  # ---------------------------------------------------------------
+  tikv0:
+    image: docker.io/pingcap/tikv:latest
+    container_name: oxigraph-tikv0
+    volumes:
+      - tikv0-data:/data  # persist RocksDB/Raft data
+    depends_on:
+      pd0:
+        condition: service_healthy
+    command:
+      - --addr=0.0.0.0:20160
+      - --status-addr=0.0.0.0:20180
+      - --advertise-addr=tikv0:20160
+      - --advertise-status-addr=tikv0:20180
+      - --data-dir=/data
+      - --pd-endpoints=pd0:2379
+    healthcheck:
+      # TiKV exposes metrics/status on the status port.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:20180/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------
+  # TiKV node 1
+  # ---------------------------------------------------------------
+  tikv1:
+    image: docker.io/pingcap/tikv:latest
+    container_name: oxigraph-tikv1
+    volumes:
+      - tikv1-data:/data
+    depends_on:
+      pd0:
+        condition: service_healthy
+    command:
+      - --addr=0.0.0.0:20160
+      - --status-addr=0.0.0.0:20180
+      - --advertise-addr=tikv1:20160
+      - --advertise-status-addr=tikv1:20180
+      - --data-dir=/data
+      - --pd-endpoints=pd0:2379
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:20180/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------
+  # TiKV node 2
+  # Three nodes gives a full Raft quorum (3 replicas) so Region
+  # leader election and fault tolerance work as in production.
+  # ---------------------------------------------------------------
+  tikv2:
+    image: docker.io/pingcap/tikv:latest
+    container_name: oxigraph-tikv2
+    volumes:
+      - tikv2-data:/data
+    depends_on:
+      pd0:
+        condition: service_healthy
+    command:
+      - --addr=0.0.0.0:20160
+      - --status-addr=0.0.0.0:20180
+      - --advertise-addr=tikv2:20160
+      - --advertise-status-addr=tikv2:20180
+      - --data-dir=/data
+      - --pd-endpoints=pd0:2379
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:20180/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+# Named volumes for data persistence across container restarts.
+# Use `docker compose down -v` to wipe all data.
+volumes:
+  pd0-data:
+  tikv0-data:
+  tikv1-data:
+  tikv2-data:

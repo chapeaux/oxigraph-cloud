@@ -1,0 +1,6 @@
+ {
+    "group":      ["wg/json-ld"]
+,   "contacts":   ["plehegar"]
+,   "repo-type":  "note"
+,   "short-name": "json-ld-streaming"
+}

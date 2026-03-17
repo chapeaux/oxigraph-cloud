@@ -1,0 +1,3 @@
+{
+  "http://example/foo": {"@type": "_:dt", "@value": "bar"}
+}

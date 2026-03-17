@@ -1,0 +1,35 @@
+[package]
+name = "oxjsonld"
+version = "0.2.4"
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+keywords = ["JSON-LD", "RDF"]
+repository = "https://github.com/oxigraph/oxigraph/tree/master/lib/oxjsonld"
+description = "Parser and serializer for the JSON-LD format"
+documentation = "https://docs.rs/oxjsonld"
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+async-tokio = ["dep:tokio", "json-event-parser/async-tokio"]
+rdf-12 = ["oxrdf/rdf-12"]
+
+[dependencies]
+json-event-parser.workspace = true
+oxiri.workspace = true
+oxrdf.workspace = true
+ryu-js.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

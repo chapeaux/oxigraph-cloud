@@ -1,0 +1,3871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta content="text/html; charset=utf-8" http-equiv="content-type" />
+<title>RDF Dataset Canonicalization</title>
+<script class="remove" src="https://www.w3.org/Tools/respec/respec-w3c"></script>
+<script src="common/common.js" class="remove" defer></script>
+<script class="remove" src="common/biblio.js"></script>
+<script class="remove">
+//<![CDATA[
+  var respecConfig = {
+    localBiblio:          rch.localBiblio,
+    specStatus:           "ED",
+    copyrightStart:       "2010",
+    edDraftURI:           "https://w3c.github.io/rdf-canon/spec",
+
+    // the specification's short name, as in http://www.w3.org/TR/short-name/
+    shortName:            "rdf-canon",
+    subtitle:             "A Standard RDF Dataset Canonicalization Algorithm",
+    // if you wish the publication date to be other than today, set this
+    // publishDate:  "2009-08-06",
+
+    github: "https://github.com/w3c/rdf-canon/",
+    edDraftURI: "https://w3c.github.io/rdf-canon/spec/",
+    // editors, add as many as you like
+    // only "name" is required
+    editors:  [
+      { name:       "Dave Longley",
+        url:        "https://github.com/dlongley",
+        w3cid:      "48025",
+        company:    "Digital Bazaar",
+        companyURL: "https://www.digitalbazaar.com/" },
+      { name:       "Gregg Kellogg",
+        url:        "https://greggkellogg.net/",
+        w3cid:      "44770" },
+      { name:       "Dan Yamamoto",
+        url:        "https://github.com/yamdan",
+        w3cid:      "139477" }
+    ],
+
+    // formerEditors, add as many as you like
+    // only "name" is required
+    formerEditors:  [
+      { name:       "Manu Sporny",
+        url:        "https://www.linkedin.com/in/manusporny/",
+        w3cid:      "41758",
+        company:    "Digital Bazaar",
+        companyURL: "https://www.digitalbazaar.com/",
+        note:       "CG Report" }
+      ],
+
+    // authors, add as many as you like.
+    // This is optional, uncomment if you have authors as well as editors.
+    // only "name" is required. Same format as editors.
+    authors:  [
+      { name:       "Dave Longley",
+        url:        "https://github.com/dlongley",
+        w3cid:      "48025",
+        company:    "Digital Bazaar",
+        companyURL: "https://www.digitalbazaar.com/" }
+    ],
+
+    // name of the
+    group: "rch",
+    crEnd: "2023-11-28",
+    testSuiteURI: "https://w3c.github.io/rdf-canon/tests/",
+    errata: "https://w3c.github.io/rdf-canon/errata/",
+    implementationReportURI: "https://w3c.github.io/rdf-canon/reports/",
+    xref: ["infra"],
+    doJsonLd:     true,
+    wgPublicList: "public-rch-wg",
+    lint: { "informative-dfn": false }
+  };
+//]]>
+</script>
+<style>
+  .hl-bold { font-weight: bold; color: #0a3; }
+  .comment { color: #999; }
+  table, thead, tr, td {
+    padding: 5px;
+    border-width: 1px;
+    border-spacing: 0px;
+    border-style: solid;
+    border-collapse: collapse;
+  }
+  table.hash-related {
+    caption-side: bottom;
+    width: 100%;
+  }
+  table.hash-related > thead > tr> th {
+    text-align: center;
+  }
+  .algorithm ol {
+    counter-reset: numsection;
+    list-style-type: none;
+  }
+  .algorithm ol>li {
+    margin: 0.5em 0;
+  }
+  .algorithm ol>li:before {
+    font-weight: bold;
+    counter-increment: numsection;
+    content: counters(numsection, ".") ") ";
+  }
+  a.externalDFN {border-bottom:  1px solid #99c; font-style: italic;}
+
+  code { color: #c63501; }
+
+  details, .details {
+    background-color: rgb(245,245,245);
+    border-left: 0.3em solid rgb(200,200,200);
+    padding: 0.3em;
+  }
+  summary, .details > .summary {font-size: small; }
+
+  pre.logging	{
+    border: thin solid #88AA88;
+    background-color: #E8F0E8;
+    margin: 1em 4em 1em 0em;
+    padding: 0.3em;
+  }
+  table.log ul { padding: 0; margin: 0; }
+  table.log td { text-align: left; vertical-align: top;}
+  table.log td.ca.c0 { display: none; }
+  table.log td.bn_to_quads.c0 { display: none; }
+  table.log td.identifier.c1 { font-style: italic; }
+  table.log li { list-style: none; }
+</style>
+</head>
+
+<body>
+<section id="abstract">
+  <p>RDF [[RDF11-CONCEPTS]] describes a graph-based data model for making claims
+    about the world and provides the foundation for reasoning upon that graph
+    of information. At times, it becomes necessary to compare the differences
+    between sets of graphs, digitally sign them, or generate short identifiers
+    for graphs via hashing algorithms. This document outlines an algorithm for
+    normalizing <a>RDF datasets</a> such that these operations can be
+    performed.</p>
+</section>
+
+<section id="sotd" class="updateable-rec">
+  <p>This document describes the <a>RDFC-1.0</a> algorithm for canonicalizing
+    RDF datasets, which was the input from the
+    <a href="https://www.w3.org/community/credentials/">W3C Credentials Community Group</a>
+    published as [[CCG-RDC-FINAL]].</p>
+
+  <p>At the time of publication, [[RDF11-CONCEPTS]] is the most recent recommendation
+    defining <a>RDF datasets</a> and [[N-QUADS]],
+    however work on an updated specification
+    is ongoing within the <a href="https://www.w3.org/groups/wg/rdf-star/">W3C RDF-star Working Group</a>.
+    Some dependencies from relevant updated specifications are provided
+    normatively in this specification with the expectation
+    that a future update to this specification will replace those with normative
+    references to updated RDF specifications.</p>
+</section>
+
+<section id="introduction" class="informative">
+  <h2>Introduction</h2>
+
+  <p>When data scientists discuss canonicalization,
+    they do so in the context of achieving a particular set of goals.
+    Since the same information may sometimes be expressed in a variety of different ways,
+    it often becomes necessary to transform each of these
+    different ways into a single, standard representation.
+    With a standard representation, the differences between
+    two different sets of data can be easily determined,
+    a cryptographically-strong hash identifier can be generated for a particular
+    set of data,
+    and a particular set of data may be digitally-signed for later
+    verification.</p>
+
+  <p>In particular, this specification is about normalizing
+    <a>RDF datasets</a>, which are collections of graphs. Since
+    a directed graph can express the same information in more than one
+    way, it requires canonicalization to achieve the aforementioned goals
+    and any others that may arise via serendipity.</p>
+
+  <p>Most <a>RDF datasets</a> can be canonicalized fairly quickly, in terms
+    of algorithmic time complexity. However, those that contain nodes that do
+    not have globally unique identifiers pose a greater challenge. Normalizing
+    these datasets presents the <dfn>graph isomorphism</dfn> problem, a
+    problem that is believed to be difficult to solve quickly in the worst
+    case. Fortunately, existing real world data is rarely, if ever, modeled in
+    a way that manifests as the worst case and new data can be modeled to avoid
+    it. In fact, software systems that detect a problematic dataset
+    (see <a href="#dataset-poisoning" class="sectionRef"></a>) can choose
+    to assume it's an attempted denial of service attack, rather than a
+    real input, and abort.</p>
+
+  <p>This document outlines an algorithm for generating a canonical
+    serialization of an <a>RDF dataset</a> given an <a>RDF dataset</a> as input.
+    The algorithm is called the
+    <strong>RDF Canonicalization algorithm version 1.0</strong> or
+    <a>RDFC-1.0</a>.</p>
+
+  <div class="note">
+    <p>[[[RDF11-CONCEPTS]]] [[RDF11-CONCEPTS]] lacks clarity on the representation of
+      <a data-cite="RDF11-CONCEPTS#dfn-language-tagged-string">language-tagged strings</a>,
+      where <a data-cite="RDF11-CONCEPTS#dfn-language-tag">language tags</a> of the form `xx-YY`
+      are treated as being case insensitive. Implementations might represent language tags
+      using all lower case in the form `xx-yy`,
+      retain the original representation `xx-YY`,
+      or use [[BCP47]] <a data-cite="BCP47#section-2.1.1">formatting conventions</a>,
+      leading to different canonical forms, and therefore, different hashed values.</p>
+    <ul>
+      <li>The Canonicalization algorithm is based on the RDF 1.1 definition,
+        in the sense that the <a data-cite="RDF11-CONCEPTS#dfn-language-tag">language tag</a> `xx-YY`
+        is case insensitive, which might lead to different canonicalizations if the user is not aware of this problem.</li>
+      <li>User communities ought to agree to use lower case
+        <a data-cite="RDF11-CONCEPTS#dfn-language-tag">language tags</a>,
+        while being aware that some implementations might normalize language tags,
+        affecting hash values.</li>
+      <li>Future evolution of RDF might regulate this issue, which RDF environments might have to adapt to,
+        and this might lead to an update of <a>RDFC-1.0</a>.</li>
+    </ul>
+
+  </div>
+  <p class="note">See <a href="#urdna2015" class="sectionRef"></a>
+    for a comparison with the version of the algorithm published
+    in [[[CCG-RDC-FINAL]]] [[CCG-RDC-FINAL]].</p>
+
+  <section id="intro-uses">
+    <h2>Uses of Dataset Canonicalization</h2>
+    <p>There are different use cases where graph or dataset canonicalization are important:</p>
+    <ul>
+      <li>Determining if one serialization is isomorphic to another.</li>
+      <li>Digital signing of graphs (datasets) independent of serialization or format.</li>
+      <li>Comparing two graphs (datasets) to find differences.</li>
+      <li>Communicating change sets when remotely updating an <a data-cite="RDF11-CONCEPTS#dfn-rdf-source">RDF source</a>.</li>
+    </ul>
+    <p>A canonicalization algorithm is necessary, but not necessarily sufficient, to handle many of these use cases. The use of <a>blank nodes</a> in RDF graphs and datasets has a long history and creates inevitable complexities. Blank nodes are used for different purposes:</p>
+    <ul>
+      <li>when a well known identifier for a node is not known, or the author of a document chooses not to unambiguously name that node,</li>
+      <li>when a node is used to stitch together parts of a graph and the nodes themselves are not interesting (e.g., <a data-cite="RDF11-MT#rdf-collections">RDF Collections</a> in [[RDF11-MT]]),</li>
+      <li>when someone is trying to create an intentionally difficult graph topology.</li>
+    </ul>
+    <p>Furthermore,
+      RDF semantics dictate that deserializing an RDF document
+      results in the creation of unique <a>blank nodes</a>,
+      unless it can be determined that on each occasion,
+      the <a>blank node</a> identifies the same resource.
+      This is due to the fact that <a>blank node identifiers</a>
+      are an aspect of a concrete RDF syntax
+      and are not intended to be persistent or portable.
+      Within the abstract RDF model,
+      blank nodes do not have identifiers
+      (although some
+      RDF store
+      implementations may use stable identifiers and may choose to make them portable).
+      See <a data-cite="RDF11-CONCEPTS#section-blank-nodes">Blank Nodes</a>
+      in [[RDF11-CONCEPTS]] for more information.</p>
+
+    <p>RDF does have a provision for allowing blank nodes
+      to be published in an externally identifiable way through the use of
+      <a data-cite="RDF11-CONCEPTS#dfn-skolem-iri">Skolem IRIs</a>,
+      which allow a given RDF store to replace the use of blank nodes
+      in a concrete syntax with <a>IRIs</a>,
+      which then serve to repeatably identify that blank node within that particular RDF store;
+      however, this is not generally useful for talking about the
+      same graph in different RDF stores,
+      or other concrete representations.
+      In any case, a stable <a>blank node identifier</a> defined for one
+      RDF store or serialization is arbitrary,
+      and typically not relatable to the context within which it is used.</p>
+
+    <p>This specification defines an algorithm for creating stable
+      <a>blank node identifiers</a> repeatably for different serializations
+      possibly using individualized <a>blank node identifiers</a>
+      of the same RDF graph (dataset) by grounding each <a>blank node</a>
+      through the nodes to which it is connected.
+      As a result, a graph signature can be obtained by hashing a canonical serialization
+      of the resulting <a>canonicalized dataset</a>,
+      allowing for the isomorphism and digital signing use cases.
+      This specification does not define such a graph signature.</p>
+
+    <p>As blank node identifiers can be stable even with other changes to a graph (dataset),
+      in some cases it is possible to compute the difference between two graphs (datasets),
+      for example if changes are made only to ground triples,
+      or if new blank nodes are introduced which do not create an automorphic confusion
+      with other existing blank nodes.
+      If any information which would change the generated blank node identifier,
+      a resulting diff might indicate a greater set of changes than actually exists.
+      Additionally, if the starting dataset is an N-Quads document,
+      it may be possible to correlate the original blank node identifiers
+      used within that N-Quads document with those issued in the
+      <a>canonicalized dataset</a>.</p>
+
+    <p class="note">Although alternative <a>hash algorithms</a> might be used
+      with this specification,
+      applications ought to carefully weigh the advantages
+      and disadvantages of using an alternative hash function.
+      This is the case, in particular, for any representation of the <a>canonical n-quads form</a>
+      or <a>issued identifiers map</a>
+      that does not identify the associated hash algorithm. Any use case
+      that requires reproduction of the same output is expected to
+      unequivocally express or communicate the internal
+      hash algorithm that was used when generating
+      the <a>canonical n-quads form</a>.
+    </p>
+  </section>
+
+  <section id="how-to-read">
+    <h2>How to Read this Document</h2>
+
+    <p>This document is a detailed specification for an <a>RDF dataset</a>
+      canonicalization algorithm. The document is primarily intended for the
+      following audiences:</p>
+
+    <ul>
+      <li>Software developers that want to implement an <a>RDF dataset</a>
+        canonicalization algorithm.</li>
+      <li>Masochists.</li>
+    </ul>
+
+    <p>To understand the basics in this specification you must be familiar with
+      basic RDF concepts [[RDF11-CONCEPTS]]. A working knowledge of
+      <a href="https://en.wikipedia.org/wiki/Graph_theory">graph theory</a> and
+      <a href="https://en.wikipedia.org/wiki/Graph_isomorphism">graph isomorphism</a>
+      is also recommended.</p>
+  </section>
+
+  <section id="typo-conventions" class="informative">
+    <h2>Typographical conventions</h2>
+    <div data-include="common/typographical-conventions.html"></div>
+  </section>
+</section>
+
+<section id="conformance">
+  <p>A conforming processor is a system which can generate
+    the <a>canonical n-quads form</a> of an <a>input dataset</a>
+    consistent with the algorithms defined in this specification.</p>
+
+  <p>The algorithms in this specification are normative,
+    because to consistently reproduce the same canonical identifiers,
+    implementations MUST strictly conform to the steps outlined in these algorithms.</p>
+
+  <p class="note">Implementers can partially check their level of conformance with
+    this specification by successfully passing the test cases of the
+    <a href="https://w3c.github.io/rdf-canon/tests/">RDF Dataset Canonicalization test suite</a>.
+    Note, however, that passing all the tests in the test
+    suite does not imply complete conformance to this specification. It only implies
+    that the implementation conforms to the aspects tested by the test suite.</p>
+</section>
+
+<section id="terminology" class="normative">
+  <h2>Terminology</h2>
+
+  <section id="canon-terms">
+    <h3>Terms defined by this specification</h3>
+    <dl data-sort="ascending">
+      <dt><dfn data-lt="input dataset|input datasets">input dataset</dfn></dt>
+      <dd>The abstract <a>RDF dataset</a> that is provided as input to
+        the algorithm.</dd>
+      <dt><dfn>input blank node identifier map</dfn></dt>
+      <dd>Records any blank node identifiers already assigned to the
+        <a>input dataset</a>.
+        If the <a>input dataset</a> is provided as an N-Quads document,
+        the <a>map</a> relates blank nodes in the abstract <a>input dataset</a>
+        to the blank node identifiers used within the N-Quads document,
+        otherwise, identifiers are assigned arbitrarily for
+        each blank node in the input dataset not previously identified.
+        <div class="note">Implementations or environments might deal with blank
+        node identifiers more directly; for example, some implementations might
+        retain blank node identifiers in the parsed or abstract dataset. Implementations
+        are expected to reuse these to enable usable mappings between input blank node
+        identifiers and output blank node identifiers outside of the algorithm.</div>
+      </dd>
+      <dt><dfn>canonicalized dataset</dfn></dt>
+      <dd>A <a>canonicalized dataset</a> is the combination of the following:
+        <ul>
+          <li>an <a>RDF dataset</a> —
+            the <a>input dataset</a>,</li>
+          <li>the <a>input blank node identifier map</a> —
+            mapping <a>blank nodes</a> in the input dataset to <a>blank node identifiers</a>, and</li>
+          <li>the <a>issued identifiers map</a> from the <a>canonical issuer</a> —
+            mapping identifiers in the input dataset to canonical identifiers</li>
+        </ul>
+        A concrete serialization of a <a>canonicalized dataset</a> MUST label
+        all <a>blank nodes</a> using the canonical <a>blank node identifiers</a>.
+      </dd>
+      <dt><dfn>identifier issuer</dfn></dt>
+      <dd>An identifier issuer is used to issue new <a>blank node identifiers</a>. It
+        maintains a
+        <a href="#bn-issuer-state">blank node identifier issuer state</a>.</dd>
+      <dt><dfn>hash</dfn></dt>
+      <dd>The lowercase, hexadecimal representation of a message digest.</dd>
+      <dt><dfn>hash algorithm</dfn></dt>
+      <dd>The default hash algorithm used by <a>RDFC-1.0</a>, namely, SHA-256 [[FIPS-180-4]].
+        <p>Implementations MUST support a parameter to define the <a>hash algorithm</a>,
+          MUST support SHA-256 and SHA-384 [[FIPS-180-4]],
+          and SHOULD support the ability to specify other hash algorithms.
+          Using a different hash algorithm will generally result in different output than
+          using the default.</p>
+
+        <p class="note">There is no expectation that the default hash algorithm
+          will also be used by any application creating a hash digest of the
+          canonical N-Quads result.</p>
+      </dd>
+      <dt><dfn>mention</dfn></dt>
+      <dd>
+        A node is mentioned in a <a>quad</a>
+        if it is a component of that quad,
+        as a <a>subject</a>, <a>predicate</a>, <a>object</a>, or <a>graph name</a>.</dd>
+      <dt><dfn>mention set</dfn></dt>
+      <dd>The set of all <a>quads</a> in a <a>dataset</a>
+        that <a>mention</a> a node <var>n</var> is called the <a>mention set</a> of <var>n</var>,
+        denoted <var>Q<sub>n</sub></var>.</dd>
+      <dt><dfn>gossip path</dfn></dt>
+      <dd>A particular enumeration of every incident <a>mention</a> emanating
+        from a blank node. This recursively includes transitively related
+        <a>mentions</a> until any named node or blank node already labeled by
+        a particular <a>identifier issuer</a> is reached. Gossip paths are
+        encoded and operated on in the <a>RDFC-1.0</a> algorithm as strings. (See
+        <a href="#hash-nd-quads" class="sectionRef"></a> for more information
+        on the construction of gossip paths.)
+      </dd>
+      <dt><dfn data-lt="canonical n-quads" class="no-export">canonical n-quads form</dfn></dt>
+      <dd>
+        The canonicalized representation of a quad is defined in <a href="#canonical-quads" class="sectionRef"></a>.
+        A quad in <a>canonical n-quads form</a> represents a <a>graph name</a>, if present, in the same manner as
+        a <a>subject</a>, and each quad is terminated with a single <code>LF</code> (line feed, code point <code class="codepoint">U+000A</code>).
+      </dd>
+      <dt><dfn data-lt="quad|quads" class="no-export">quad</dfn></dt>
+      <dd>A tuple composed of <a>subject</a>, <a>predicate</a>, <a>object</a>, and <a>graph name</a>.
+        This is a generalization of an <a>RDF triple</a> along with a <a>graph name</a>.
+      </dd>
+      <dt><dfn class="export">canonicalization function</dfn></dt>
+      <dd>A <a>canonicalization function</a> maps <a>RDF datasets</a>
+        into <a data-cite="RDF11-CONCEPTS#dfn-dataset-isomorphism">isomorphic datasets</a> [[!RDF11-CONCEPTS]].
+        Two datasets produce the same canonical result if and only if they are <a data-cite="RDF11-CONCEPTS#dfn-dataset-isomorphism">isomorphic</a>.
+        The <a>RDFC-1.0</a> algorithm implements a <a>canonicalization function</a>.
+        Some datasets may be constructed to prevent this algorithm from
+        terminating in a reasonable amount of time (see <a href="#dataset-poisoning" class="sectionRef"></a>),
+        in which case the algorithm can be considered to be
+        a <dfn class="export">partial canonicalization function</dfn>.
+
+      </dd>
+    </dl>
+  </section>
+
+  <section id="terms-reference">
+    <h3>Terms defined by cited specifications</h3>
+    <dl data-sort="ascending">
+      <dt><dfn data-cite="INFRA#string">string</dfn></dt><dd>
+        A string is a sequence of zero or more Unicode characters.</dd>
+      <dt><code>true</code> and <code>false</code></dt><dd>
+        Values that are used to express one of two possible <a data-cite="INFRA#boolean">boolean</a> states.</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-iri" data-lt="internationalized resource identifier|iri|iris"><abbr title="Internationalized Resource Identifier">IRI</abbr></dfn></dt>
+      <dd>An <a>IRI</a> (Internationalized Resource Identifier) is a string that conforms to the syntax
+        defined in [[RFC3987]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-subject" data-lt="subject|subjects">subject</dfn></dt>
+      <dd>A <a>subject</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-predicate" data-lt="predicate|predicates">predicate</dfn></dt>
+      <dd>A <a>predicate</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-object" data-lt="object|objects">object</dfn></dt>
+      <dd>An <a>object</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-rdf-triple" data-lt="rdf triple|rdf triples|triple|triples">RDF triple</dfn></dt>
+      <dd>A <a>triple</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-rdf-graph" data-lt="rdf graph|rdf graphs|graph|graphs">RDF graph</dfn></dt>
+      <dd>An <a>RDF graph</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-graph-name" data-lt="graph name|graph names">graph name</dfn></dt>
+      <dd>A <a>graph name</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-default-graph">default graph</dfn></dt>
+      <dd>The <a>default graph</a>
+        as specified by [[!RDF11-CONCEPTS]].</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-rdf-dataset" data-lt="rdf dataset|rdf datasets|dataset|datasets">RDF dataset</dfn></dt>
+      <dd>A <a>dataset</a>
+        as specified by [[!RDF11-CONCEPTS]].
+        For the purposes of this specification, an <a>RDF dataset</a>
+        is considered to be a set of <a>quads</a></dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-blank-node">blank node</dfn></dt>
+      <dd>A <a>blank node</a>
+        as specified by [[!RDF11-CONCEPTS]]. In short, it is a node in a graph that is
+        neither an <a>IRI</a>, nor a
+        <a data-cite="RDF11-CONCEPTS#dfn-literal">literal</a>.</dd>
+      <dt><dfn data-cite="RDF11-CONCEPTS#dfn-blank-node-identifier">blank node identifier</dfn></dt>
+      <dd>A <a>blank node identifier</a>
+        as specified by [[!RDF11-CONCEPTS]]. In short, it is a <a>string</a> that begins
+        with <code>_:</code> that is used as an identifier for a
+        <a>blank node</a>. <a>Blank node identifiers</a>
+        are typically implementation-specific local identifiers; this document
+        specifies an algorithm for deterministically specifying them.</dd>
+      <dd>
+        Concrete syntaxes, like [[Turtle]] or [[N-Quads]], prepend blank node identifiers with the <code>_:</code> string
+        to differentiate them from other nodes in the graph. This affects the
+        canonicalization algorithm, which is based on calculating a hash over the representations of <a>quads</a> in this format.
+      </dd>
+      <dt><dfn data-cite="XPATH-FUNCTIONS#codepoint-collation" data-lt="code point order|code point ordered|unicode codepoint collation">Unicode code point order</dfn></dt>
+      <dd>This refers to determining the order of two Unicode strings (`A` and `B`),
+        using <a>Unicode Codepoint Collation</a>,
+        as defined in [[XPATH-FUNCTIONS]],
+        which defines a
+        <a href="https://en.wikipedia.org/wiki/Total_order">total ordering</a>
+        of <a>strings</a> comparing code points.
+        Note that for UTF-8 encoded strings, comparing the byte sequences gives the same result as <a>code point order</a>.
+      </dd>
+    </dl>
+  </section>
+</section>
+
+<section id="canonicalization">
+  <h2>Canonicalization</h2>
+
+  <p>Canonicalization is the process of transforming an
+    <a>input dataset</a> to its <a>serialized canonical form</a>.
+    That is, any two <a>input datasets</a> that contain the same information,
+    regardless of their arrangement,
+    will be transformed into the same <a>serialized canonical form</a>.
+    The problem requires directed
+    graphs to be deterministically ordered into sets of nodes and edges. This
+    is easy to do when all of the nodes have globally-unique identifiers, but
+    can be difficult to do when some of the nodes do not. Any nodes without
+    globally-unique identifiers must be issued deterministic identifiers.</p>
+
+  <p class="note">
+    This specification defines a <a>canonicalized dataset</a> to include stable identifiers for blank nodes,
+    practical uses of which will always generate a canonical serialization of such a dataset.</p>
+
+  <p>In time, there may be more than one canonicalization algorithm and,
+    therefore, for identification purposes, this algorithm is named the
+    "RDF Canonicalization algorithm version 1.0"
+    (<abbr title="RDF Canonicalization algorithm version 1.0"><dfn class="export">RDFC-1.0</dfn></abbr>).</p>
+
+  <p><a href="#fig-ca-overview"></a> provides an overview of <a>RDFC-1.0</a>,
+    with steps 1 through 7 corresponding to the various steps described in
+    <a href="#canon-algo-algo"></a>.</p>
+
+  <figure id="fig-ca-overview" style="text-align:center">
+    <!-- Source for this file is at https://docs.google.com/presentation/d/1iA2m9SZ1XtD0zorfWhi1_rZjvqrxYCnSs3kQR_zyUFk -->
+    <object data="ca-overview.svg" style="width: 100%" type="image/svg+xml" aria-describedby="fig-ca-overview-alt">
+      <p id="fig-ca-overview-alt">
+        The image represents an overview of the <a>RDFC-1.0</a> algorithm.
+        The Input Document is deserialized into the Input Dataset
+        and Input Blank Node Identifier Map.
+        Canonicalization steps 1-6 are executed resulting in
+        the Canonicalized Dataset including the
+        Input Blank Node Identifier Map and Issued Identifiers Map.
+        Step 7 of the Canonicalization algorithm creates
+        the canonical n-quads form of the Canonicalized Dataset.</p>
+     </object>
+     <figcaption>An illustrated overview of the <a>RDFC-1.0</a> algorithm.<br/>
+       Image available in
+       <a href="ca-overview.svg" title="SVG image of overview">
+         <abbr title="Scalable Vector Graphics">SVG</abbr>
+       </a>.</figcaption>
+  </figure>
+
+  <section id="canon-overview" class="informative">
+    <h3>Overview</h3>
+
+    <p>To determine a canonical labeling, <a>RDFC-1.0</a> considers the
+      information connected to each blank node.
+      Nodes with unique first degree information can immediately be issued a canonical identifier
+      via the <a href="#issue-identifier">Issue Identifier algorithm</a>.
+      When a node has non-unique first degree information,
+      it is necessary to determine all information that is transitively connected
+      to it throughout the entire dataset.
+      <a href="#hash-1d-quads" class="sectionRef"></a> defines a
+      node’s first degree information via its first degree hash. </p>
+
+    <p>Hashes are computed from the information of each blank node.
+      These hashes encode the <a>mentions</a> incident to each blank node.
+      The <a>hash</a> of a string <var>s</var>, is the lower-case,
+      hexadecimal representation of the result of passing <var>s</var>
+      through a cryptographic hash function.
+      By default, <a>RDFC-1.0</a> uses the SHA-256 hash algorithm [[FIPS-180-4]].</p>
+
+    <p class="note">The "degree" terminology is used within this specification
+      as colloquial way of describing
+      the <a href="https://en.wikipedia.org/wiki/Distance_(graph_theory)#Related_concepts">eccentricity</a> or
+      <a href="https://en.wikipedia.org/wiki/Distance_(graph_theory)#Related_concepts">radius</a>
+      of any two nodes within a dataset.
+      This concept is also related to "degrees of separation",
+      as in, for example, "<a href="https://en.wikipedia.org/wiki/Six_degrees_of_separation">six degrees of separation</a>".
+      Nodes with unique first degree information can be considered nodes with a radius of one.</p>
+  </section>
+
+  <section id="canon-state">
+    <h2>Canonicalization State</h2>
+
+    <p>When performing the steps required by the canonicalization algorithm,
+      it is helpful to track state in a data structure called the
+      <dfn>canonicalization state</dfn>. The information contained in the
+      <a>canonicalization state</a> is described below.</p>
+
+    <dl>
+      <dt><dfn>blank node to quads map</dfn></dt>
+      <dd>A <a>map</a> that relates a <a>blank node identifier</a> to
+        the <a>quads</a> in which they appear in the
+        <a>input dataset</a>.</dd>
+      <dt><dfn>hash to blank nodes map</dfn></dt>
+      <dd>A <a>map</a> that relates a <a>hash</a> to a
+        <a>list</a> of
+        <a>blank node identifiers</a>.</dd>
+      <dt><dfn>canonical issuer</dfn></dt>
+      <dd>An <a>identifier issuer</a>, initialized with the
+        prefix <code>c14n</code> (short for canonicalization), for issuing canonical
+        <a>blank node identifiers</a>.
+        <div class="note">
+          Mapping all <a>blank nodes</a> to use this
+          identifier spec means that an <a>RDF dataset</a> composed of two
+          different <a>RDF graphs</a> will issue different
+          identifiers than that for the graphs taken independently. This may
+          happen anyway, due to <a
+          href="https://en.wikipedia.org/wiki/Automorphism">automorphisms</a>,
+          or overlapping statements, but an identifier based on the resulting
+          <a>hash</a> along with an issue sequence number specific to that <a>hash</a> would
+          stand a better chance of surviving such minor changes, and allow the
+          resulting information to be useful for <a href="https://www.w3.org/2001/sw/wiki/How_to_diff_RDF">RDF Diff</a>.
+        </div>
+      </dd>
+    </dl>
+  </section>
+
+  <section id="bn-issuer-state">
+    <h2>Blank Node Identifier Issuer State</h2>
+
+    <p>The canonicalization algorithm issues identifiers to <a>blank nodes</a>.
+      The <a href="#issue-identifier">Issue Identifier algorithm</a> uses an
+      <a>identifier issuer</a> to accomplish this task.
+      The information an <a>identifier issuer</a> needs to keep track of is described
+      below.</p>
+
+    <dl>
+      <dt><dfn>identifier prefix</dfn></dt>
+      <dd>The identifier prefix is a string that is used at the beginning of an
+        <a>blank node identifier</a>. It should be initialized to a
+        string that is specified by the canonicalization algorithm. When
+        generating a new <a>blank node identifier</a>, the prefix
+        is concatenated with a <a>identifier counter</a>. For example,
+        <code>c14n</code> is a proper initial value for the
+        <a>identifier prefix</a> that would produce
+        <a>blank node identifiers</a> like <code>c14n1</code>.</dd>
+      <dt><dfn>identifier counter</dfn></dt>
+      <dd>A counter that is appended to the <a>identifier prefix</a> to
+        create an <a>blank node identifier</a>. It is initialized to
+        <code>0</code>.</dd>
+      <dt><dfn>issued identifiers map</dfn></dt>
+      <dd>An <a>ordered map</a> that relates <a>blank node identifiers</a> to issued identifiers,
+        to prevent issuance of more than one new identifier per existing identifier,
+        and to allow <a>blank nodes</a> to
+        be assigned identifiers some time after issuance.</dd>
+    </dl>
+  </section>
+
+  <section id="canon-algorithm" class="algorithm">
+    <h2>Canonicalization Algorithm</h2>
+
+    <p>The canonicalization algorithm converts an <a>input dataset</a>
+      into a <a>canonicalized dataset</a> or raises an error if
+      the input dataset is determined to be overly complex.
+      This algorithm will assign
+      deterministic identifiers to any <a>blank nodes</a> in the
+      <a>input dataset</a>.</p>
+
+    <section id="canon-algo-overview" class="informative">
+      <h3>Overview</h3>
+
+      <p><a>RDFC-1.0</a> canonically labels an <a>RDF dataset</a>
+        by assigning each <a>blank node</a> a canonical identifier.
+        In RDFC-1.0, an RDF dataset <var>D</var>
+        is represented as a set of <a>quads</a> of the form `&lt; s, p, o, g >`
+        where the graph component `g` is empty if and only if the
+        <a data-lt="RDF triple">triple</a> `&lt; s, p, o >` is in the <a>default graph</a>.
+        It is expected that, for two RDF datasets,
+        <a>RDFC-1.0</a> returns the same canonically labeled list of quads
+        if and only if the two datasets are isomorphic (i.e., the same modulo blank node identifiers).
+      </p>
+
+      <p><a>RDFC-1.0</a> consists of several sub-algorithms.
+        These sub-algorithms are introduced in the following sub-sections.
+        First, we give a high level summary of RDFC-1.0.</p>
+
+      <ol>
+        <li id="ca-hl.1"><strong>Initialization</strong>.
+          Initialize the state needed for the rest of the algorithm
+          using <a href="#canon-state" class="sectionRef"></a>.
+          Also initialize the <a>canonicalized dataset</a> using the <a>input dataset</a>
+          (which remains immutable)
+          the <a>input blank node identifier map</a>
+          (retaining blank node identifiers from the input if possible, otherwise assigning them arbitrarily);
+          the <a>issued identifiers map</a> from the <a>canonical issuer</a> is added upon completion of the algorithm.</li>
+        <li id="ca-hl.2"><strong>Compute first degree hashes</strong>.
+          Compute the first degree hash for each blank node in the dataset using <a href="#hash-1d-quads" class="sectionRef"></a>.</li>
+        <li id="ca-hl.3"><strong>Canonically label unique nodes</strong>.
+          Assign canonical identifiers via <a href="#issue-identifier" class="sectionRef"></a>,
+          in <a>Unicode code point order</a>, to each blank node whose first degree hash is unique.</li>
+        <li id="ca-hl.4"><strong>Compute N-degree hashes for non-unique nodes</strong>.
+          For each repeated first degree hash (proceeding in <a>Unicode code point order</a>),
+          compute the N-degree hash via <a href="#hash-nd-quads" class="sectionRef"></a>
+          of every unlabeled blank node that corresponds to the given repeated hash.</li>
+        <li id="ca-hl.5"><strong>Canonically label remaining nodes</strong>.
+          In <a>Unicode code point order</a> of the N-degree hashes,
+          issue canonical identifiers to each corresponding blank node using
+          <a href="#issue-identifier" class="sectionRef"></a>.
+          If more than one node produces the same N-degree hash,
+          the order in which these nodes receive a canonical identifier does not matter.</li>
+        <li id="ca-hl.6"><strong>Finish</strong>.
+          Return the <a>serialized canonical form</a> of the <a>canonicalized dataset</a>.
+          Alternatively, return the <a>canonicalized dataset</a> containing
+          the <a>input blank node identifier map</a> and <a>issued identifiers map</a>.</li>
+      </ol>
+    </section>
+
+    <section id="canon-algo-examples" class="informative">
+      <h3>Examples</h3>
+
+      <aside id="ex-ca-unique-hashes"
+            class="example"
+            title="Unique hashes">
+        <p>This example illustrates the <a href="#canon-algo-algo">Canonicalization Algorithm</a>
+          where all blank nodes have unique first-degree hashes.</p>
+
+        <figure id="fig-ca-unique-hashes" style="text-align:center">
+          <!-- Source for this file is at https://docs.google.com/drawings/d/1LQ6fp4a35lrEOKRMD20gcncUkoitX0eW8QI_U2mQnAs -->
+          <object data="unique-hashes.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-ca-unique-hashes-alt">
+            <p id="fig-ca-unique-hashes-alt">
+              The image represents the graph described in
+              <a href="#ex-ca-unique-hashes-input">
+                the following code block
+              </a>.</p>
+          </object>
+          <figcaption>An illustration of a graph resulting in unique hashes.<br/>
+            Image available in
+            <a href="unique-hashes.svg" title="SVG image of unique hashes">
+              <abbr title="Scalable Vector Graphics">SVG</abbr>
+            </a>.</figcaption>
+        </figure>
+
+        <pre id="ex-ca-unique-hashes-input"
+             data-transform="updateExample"
+             title="Graph with blank nodes resulting in unique hashes">
+          <!--
+            :p :q _:e0 .
+            :p :r _:e1 .
+            _:e0 :s :u .
+            _:e1 :t :u .
+          -->
+        </pre>
+
+        <p><a href="#ca.2">Step 2</a> is called twice, with each blank node (<code><em>e0</em></code> and <code><em>e1</em></code>)
+          in the <a>input dataset</a>
+          to populate <a>blank node to quads map</a>:</p>
+
+        <table id="ex-ca-unique-bn-quads-map"
+               class="hash-related numbered">
+          <caption>Blank node to quads map for unique hashes</caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>Q</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code><em>e0</em></code></td>
+              <td><code>:p :q <em>e0</em> .</code><br/><code><em>e0</em> :s :u .</code></td>
+            </tr>
+            <tr>
+              <td><code><em>e1</em></code></td>
+              <td><code>:p :r <em>e1</em> .</code><br/><code><em>e1</em> :t :u .</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.3">Step 3</a> generates the first-degree
+          hash for each blank node, which is explored further
+          in <a href="#ex-1d-unique-hashes"></a>:</p>
+
+        <table id="ex-ca-unique-1d-hashes"
+               class="hash-related numbered">
+          <caption>Hash to blank nodes map for unique hashes</caption>
+          <thead><tr>
+            <th><var>hash</var></th>
+            <th><var>blank node(s)</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>`21d1dd5ba21f3dee9d76c0c00c260fa6f5d5d65315099e553026f4828d0dc77a`</td>
+              <td><code><em>e0</em></code></td>
+            </tr>
+            <tr>
+              <td>`6fa0b9bdb376852b5743ff39ca4cbf7ea14d34966b2828478fbf222e7c764473`</td>
+              <td><code><em>e1</em></code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.4">Step 4</a> creates canonical identifiers for each
+          blank node which has a unique hash:</p>
+
+        <table id="ex-ca-unique-1d-identifiers"
+               class="hash-related numbered">
+          <caption>Canonical identifiers for blank nodes with unique hashes</caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>canonical identifier</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code><em>e0</em></code></td>
+              <td><code><em>c14n0</em></code></td>
+            </tr>
+            <tr>
+              <td><code><em>e1</em></code></td>
+              <td><code><em>c14n1</em></code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.5">Step 5</a> has no effect,
+          as there are no remaining blank nodes without canonical identifiers.</p>
+
+        <p><a href="#ca.6">Step 6</a> generates
+          the canonicalized dataset by mapping blank node identifiers in the input dataset
+          with canonical identifiers:</p>
+
+        <pre id="ex-ca-unique-canonicalized-dataset" data-transform="updateExample">
+          <!--
+            :p :q _:c14n0 .
+            :p :r _:c14n1 .
+            _:c14n0 :s :u .
+            _:c14n1 :t :u .
+          -->
+        </pre>
+      </aside>
+
+      <aside id="ex-ca-shared-hashes"
+            class="example"
+            title="Shared hashes">
+        <p>This example illustrates the <a href="#canon-algo-algo">Canonicalization Algorithm</a>
+          where hashing the statements <a data-lt="mention">mentioning</a>
+          those blank nodes have overlapping results.</p>
+
+        <figure id="fig-ca-shared-hashes" style="text-align:center">
+          <!-- Source for this file is at https://docs.google.com/drawings/d/1HWpz8S-PNaWi02-utF62HAMd_0b-AF_tHNSRRUQILbU -->
+          <object data="shared-hashes.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-ca-shared-hashes-alt">
+            <p id="fig-ca-shared-hashes-alt">
+              The image represents the graph described in
+              <a href="#ex-ca-shared-hashes-input">
+                the following code block
+              </a>.</p>
+          </object>
+          <figcaption>An illustration of a graph resulting in shared hashes.<br/>
+            Image available in
+            <a href="shared-hashes.svg" title="SVG image of shared hashes">
+              <abbr title="Scalable Vector Graphics">SVG</abbr>
+            </a>.</figcaption>
+        </figure>
+
+        <pre id="ex-ca-shared-hashes-input"
+             data-transform="updateExample"
+             title="Graph with blank nodes resulting in shared hashes">
+          <!--
+            :p :q _:e0 .
+            :p :q _:e1 .
+            _:e0 :p _:e2 .
+            _:e1 :p _:e3 .
+            _:e2 :r _:e3 .
+          -->
+        </pre>
+
+        <p><a href="#ca.2">Step 2</a> is called four times, with each blank node
+          (<code><em>e0</em></code>, <code><em>e1</em></code>, <code><em>e2</em></code>, and <code><em>e3</em></code>)
+          to populate <a>blank node to quads map</a>:</p>
+
+        <table id="ex-ca-shared-bn-quads-map"
+               class="hash-related numbered">
+          <caption>Blank node to quads map for shared hashes</caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>Q</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code><em>e0</em></code></td>
+              <td><code>:p :q <em>e0</em> .</code><br/><code><em>e0</em> :p <em>e2</em> .</code></td>
+            </tr>
+            <tr>
+              <td><code><em>e1</em></code></td>
+              <td><code>:p :q <em>e1</em> .</code><br/><code><em>e1</em> :p <em>e3</em> .</code></td>
+            </tr>
+            <tr>
+              <td><code><em>e2</em></code></td>
+              <td><code><em>e0</em> :p <em>e2</em> .</code><br/><code><em>e2</em> :r <em>e3</em> .</code></td>
+            </tr>
+            <tr>
+              <td><code><em>e3</em></code></td>
+              <td><code><em>e1</em> :p <em>e3</em> .</code><br/><code><em>e2</em> :r <em>e3</em> .</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.3">Step 3</a> generates the first-degree
+          hash for each blank node, which is explored further
+          in <a href="#ex-1d-shared-hashes"></a>
+          (note that the hashes for <code><em>e0</em></code> and <code><em>e1</em></code> are shared):</p>
+
+        <table id="ex-ca-shared-1d-hash-to-bn"
+               class="hash-related numbered">
+          <caption>Hash to blank nodes map shared hashes</caption>
+          <thead><tr>
+            <th><var>hash</var></th>
+            <th><var>blank node(s)</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>`3b26142829b8887d011d779079a243bd61ab53c3990d550320a17b59ade6ba36`</td>
+              <td><code><em>e0</em></code>, <code><em>e1</em></code></td>
+            </tr>
+            <tr>
+              <td>`15973d39de079913dac841ac4fa8c4781c0febfba5e83e5c6e250869587f8659`</td>
+              <td><code><em>e2</em></code></td>
+            </tr>
+            <tr>
+              <td>`7e790a99273eed1dc57e43205d37ce232252c85b26ca4a6ff74ff3b5aea7bccd`</td>
+              <td><code><em>e3</em></code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.4">Step 4</a> creates canonical identifiers for each
+          blank node which has a unique hash:</p>
+
+        <table id="ex-ca-shared-canon-ids"
+               class="hash-related numbered">
+          <caption>Canonical identifiers for blank nodes with shared hashes</caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>canonical identifier</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code><em>e2</em></code></td>
+              <td><code><em>c14n0</em></code></td>
+            </tr>
+            <tr>
+              <td><code><em>e3</em></code></td>
+              <td><code><em>c14n1</em></code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.5">Step 5</a> is run on <code><em>e0</em></code> and <code><em>e1</em></code>, separately,
+          which share the same hash,
+          and use separate instances of a <var>temporary issuer</var>,
+          (as explored in <a href="#ex-nd-shared-hashes"></a>)
+          to create the <var>hash path list</var>
+          composed of the hash result
+          and temporary identifier mappings from
+          <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>
+          for each of these blank nodes:</p>
+
+        <table id="ex-ca-shared-result-e0"
+               class="hash-related numbered">
+          <caption>Result for <code><em>e0</em></code></caption>
+          <tbody>
+            <tr>
+              <td><var>temporary issuer</var> mappings</td>
+              <td>
+                <table class="hash-related">
+                  <thead><tr>
+                    <th><var>original identifier</var></th>
+                    <th><var>temporary identifier</var></th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td><code><em>e0</em></code></td><td><code><em>b0</em></code></td></tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td><var>hash</var></td>
+              <td>`fbc300de5afafd97a4b9ee1e72b57754dcdcb7ebb724789ac6a94a5b82a48d30`</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table id="ex-ca-shared-result-e1"
+               class="hash-related numbered">
+          <caption>Result for <code><em>e1</em></code></caption>
+          <tbody>
+            <tr>
+              <td><var>temporary issuer</var> mappings</td>
+              <td>
+                <table class="hash-related">
+                  <thead><tr>
+                    <th><var>original identifier</var></th>
+                    <th><var>temporary identifier</var></th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td><code><em>e1</em></code></td><td><code><em>b0</em></code></td></tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td><var>hash</var></td>
+              <td>`2c0b377baf86f6c18fed4b0df6741290066e73c932861749b172d1e5560f5045`</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.5.3">Step 5.3</a> creates
+          the canonical identifiers for the temporary identifiers
+          established in the previous step
+          running in order of the <var>hash</var> component from each result.
+          This updates the <a>canonical issuer</a> with the following
+          mappings:</p>
+
+        <table id="ex-ca-shared-canon-identifiers"
+               class="hash-related numbered">
+          <caption>Blank node to canonical identifiers</caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>canonical identifier</var></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><code><em>e0</em></code></td><td><code><em>c14n3</em></code></td></tr>
+            <tr><td><code><em>e1</em></code></td><td><code><em>c14n2</em></code></td></tr>
+            <tr><td><code><em>e2</em></code></td><td><code><em>c14n0</em></code></td></tr>
+            <tr><td><code><em>e3</em></code></td><td><code><em>c14n1</em></code></td></tr>
+          </tbody>
+        </table>
+
+        <p><a href="#ca.6">Step 6</a> updates
+          the <a>canonicalized dataset</a>
+          with the <a>canonical issuer</a>,
+          containing an <a>issued identifiers map</a>
+          mapping blank node identifiers from the input dataset
+          to their canonical identifiers:</p>
+
+        <pre id="ex-ca-canonicalized-shared-dataset" data-transform="updateExample">
+          <!--
+            :p :q _:c14n2 .
+            :p :q _:c14n3 .
+            _:c14n0 :r _:c14n1 .
+            _:c14n2 :p _:c14n1 .
+            _:c14n3 :p _:c14n0 .
+          -->
+        </pre>
+      </aside>
+    </section>
+
+    <section id="canon-algo-algo">
+      <h3>Algorithm</h3>
+
+      <p>The following algorithm will run with a minimal number of iterations in each step
+        for typical <a>input datasets</a>.
+        In some extreme cases, the algorithm can behave poorly, particularly in <a href="#ca.5">Step 5</a>.
+        Implementations MUST defend against potential denial-of-service attacks
+        by raising suitable exceptions and terminating early.
+        See <a href="#dataset-poisoning"></a> for further information.</p>
+
+      <p class="note">Implementations can consider placing limits on the number of
+        calls to <a href="#hash-nd-quads"></a> based on the number
+        of blank nodes in the <a>hash to blank nodes map</a>.
+        For most typical datasets, more than a couple
+        of iterations on <a href="#hash-nd-quads"></a> per blank node would be unusual.</p>
+
+      <ol id="ca">
+        <li id="ca.1">Create the <a>canonicalization state</a>.
+          If the <a>input dataset</a> is an N-Quads document,
+          parse that document into a dataset in the <a>canonicalized dataset</a>,
+          retaining any blank node identifiers used within that document
+          in the <a>input blank node identifier map</a>;
+          otherwise arbitrary identifiers are assigned for each
+          blank node.
+          <details>
+            <summary>Explanation</summary>
+            <p>This has the effect of initializing the
+              <a>blank node to quads map</a>,
+              and the <a>hash to blank nodes map</a>,
+              as well as instantiating a new <a>canonical issuer</a>.</p>
+            <p>After this algorithm completes,
+              the <a>input blank node identifier map</a> state
+              and <a>canonical issuer</a> may be used to
+              correlate blank nodes used in the
+              <a>input dataset</a> with both their original identifiers,
+              and associated canonical identifiers.</p>
+          </details>
+        </li>
+        <li id="ca.2">For every <a>quad</a> <var>Q</var> in <a>input dataset</a>:
+          <ol>
+            <li id="ca.2.1">For each <a>blank node</a> that is a component of <var>Q</var>,
+              add a reference to <var>Q</var> from the
+              [= map/entry | map entry =] for the
+              <a>blank node identifier</a> <var>identifier</var>
+              in the <a>blank node to quads map</a>,
+              creating a new entry if necessary,
+              using the identifier for the blank node found in the
+              <a>input blank node identifier map</a>.
+              <details>
+                <summary>Explanation</summary>
+                <p>This establishes the <a>blank node to quads map</a>,
+                  relating each <a>blank node</a> with the set of <a>quads</a>
+                  of which it is a component,
+                  via the map for each blank node in the input dataset to its assigned identifier.</p>
+                <p class="note">
+                  <a data-cite="RDF11-CONCEPTS#dfn-literal">Literal</a> components of
+                  <a>quads</a> are not subject to any normalization.
+                  As noted in
+                  <a data-cite="RDF11-CONCEPTS#section-Graph-Literal">Section 3.3</a>
+                  of [[RDF11-CONCEPTS]],
+                  <a data-cite="RDF11-CONCEPTS#dfn-literal-term-equality">literal term equality</a>
+                  is based on the
+                  <a data-cite="RDF11-CONCEPTS#dfn-lexical-form">lexical form</a>,
+                  rather than the <a data-cite="RDF11-CONCEPTS#dfn-literal-value">literal value</a>,
+                  so two literals `"01"^^xsd:integer` and `"1"^^xsd:integer` are treated as distinct resources.
+                </p>
+              </details>
+            </li>
+          </ol>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the state of the <a>blank node to quads map</a>:</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Blank node to quads map for unique hashes example
+                ca:
+                  log point: Entering the canonicalization function (4.4.3).
+                  ca.2:
+                    log point: Extract quads for each bnode (4.4.3 (2)).
+                    Bnode to quads:
+                      e0:
+                        - <http://example.com/#p> <http://example.com/#q> _:e0 .
+                        - _:e0 <http://example.com/#s> <http://example.com/#u> .
+                      e1:
+                        - <http://example.com/#p> <http://example.com/#r> _:e1 .
+                        - _:e1 <http://example.com/#t> <http://example.com/#u> .
+                  ####...####
+              -->
+            </pre>
+          </details>
+        </li>
+        <li id="ca.3">For each [= map/key =] <var>n</var>
+          in the <a>blank node to quads map</a>:
+          <details>
+            <summary>Explanation</summary>
+            <p>This step creates a hash for every blank node in the input document.
+              Some blank nodes will lead to a unique hash,
+              while other blank nodes may share a common hash.</p>
+          </details>
+          <ol>
+            <li id="ca.3.1">Create a <a>hash</a>, <var>h<sub>f</sub>(n)</var>,
+              for <var>n</var> according to the
+              <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a>.</li>
+            <li id="ca.3.2">Append <var>n</var> to the value associated to <var>h<sub>f</sub>(n)</var> in
+              <a>hash to blank nodes map</a>,
+              creating a new entry if necessary.</li>
+          </ol>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the results from the <a href="#hash-1d-quads-algorithm">Hash First Degree Quads algorithm</a>.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # First degree hashes for unique hashes example
+                ca:
+                  ####...####
+                  ca.3:
+                    log point: Calculated first degree hashes (4.4.3 (3)).
+                    with:
+                      - identifier: e0
+                        h1dq:
+                          log point: Hash First Degree Quads function (4.6.3).
+                          nquads:
+                            - <http://example.com/#p> <http://example.com/#q> _:a .
+                            - _:a <http://example.com/#s> <http://example.com/#u> .
+                          hash: 21d1dd5ba21f3dee9d76c0c00c260fa6f5d5d65315099e553026f4828d0dc77a
+                      - identifier: e1
+                        h1dq:
+                          log point: Hash First Degree Quads function (4.6.3).
+                          nquads:
+                            - <http://example.com/#p> <http://example.com/#r> _:a .
+                            - _:a <http://example.com/#t> <http://example.com/#u> .
+                          hash: 6fa0b9bdb376852b5743ff39ca4cbf7ea14d34966b2828478fbf222e7c764473
+                  ####...####
+              -->
+            </pre>
+          </details>
+        </li>
+        <li id="ca.4">For each <var>hash</var> to <var>identifier list</var>
+          [= map/entry | map entry =] in
+          <a>hash to blank nodes map</a>, <a>code point ordered</a> by <var>hash</var>:
+          <details>
+            <summary>Explanation</summary>
+            <p>This step establishes the canonical identifier for blank nodes having
+              a unique hash, which are recorded in the <a>canonical issuer</a>.</p>
+          </details>
+          <ol>
+            <li id="ca.4.1">If <var>identifier list</var> has more than one entry,
+              continue to the next mapping.</li>
+            <li id="ca.4.2">Use the
+              <a href="#issue-identifier">Issue Identifier algorithm</a>,
+              passing <a>canonical issuer</a> and the
+              single <a>blank node identifier</a>, <var>identifier</var> in
+              <var>identifier list</var> to issue a
+              canonical replacement identifier for <var>identifier</var>.</li>
+            <li id="ca.4.3">Remove the [= map/entry | map entry =] for <var>hash</var> from the
+              <a>hash to blank nodes map</a>.</li>
+          </ol>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the assigned canonical identifiers.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Assigned canonical identifiers for shared hashes example
+                ca:
+                  ####...####
+                  ca.4:
+                    log point: Create canonical replacements for hashes mapping to a single node (4.4.3 (4)).
+                    with:
+                      - identifier: e2
+                        hash: 15973d39de079913dac841ac4fa8c4781c0febfba5e83e5c6e250869587f8659
+                        canonical label: c14n0
+                      - identifier: e3
+                        hash: 7e790a99273eed1dc57e43205d37ce232252c85b26ca4a6ff74ff3b5aea7bccd
+                        canonical label: c14n1
+                  ####...####
+              -->
+            </pre>
+          </details>
+        </li>
+        <li id="ca.5">For each <var>hash</var> to <var>identifier list</var>
+          [= map/entry | map entry =] in
+          <a>hash to blank nodes map</a>, <a>code point ordered</a> by
+          <var>hash</var>:
+          <details>
+            <summary>Explanation</summary>
+            <p>This step establishes the canonical identifier for blank nodes having
+              a shared hash.
+              This is done by creating unique blank node identifiers for all
+              blank nodes traversed by the <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>,
+              running through each blank node without a canonical identifier in the order
+              of the hashes established in the previous step.</p>
+          </details>
+          <details>
+            <summary>Logging</summary>
+            <p>Log <var>hash</var> and <var>identifier list</var> for this iteration.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Hash and Identifier List for each iteration of step 5 using shared hashes example
+                ca:
+                  ####...####
+                  ca.5:
+                    log point: Calculate hashes for identifiers with shared hashes (4.4.3 (5)).
+                    with:
+                      - hash: 3b26142829b8887d011d779079a243bd61ab53c3990d550320a17b59ade6ba36
+                        identifier list: [ "e0", "e1"]
+                    ####...####
+                  ####...####
+              -->
+            </pre>
+          </details>
+          <ol>
+            <li id="ca.5.1">Create <var>hash path list</var> where each item will be a result
+              of running the
+              <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>.
+              <details>
+                <summary>Explanation</summary>
+                <p>This list will be populated in step <a href="#ca.5.2">5.2</a>, and will establish an order for those blank nodes
+                  sharing a common first-degree hash.</p>
+              </details>
+            </li>
+            <li id="ca.5.2">For each <a>blank node identifier</a>
+              <var>n</var> in <var>identifier list</var>:
+              <ol>
+                <li id="ca.5.2.1">If a canonical identifier has already been issued for
+                  <var>n</var>, continue to the next
+                  <a>blank node identifier</a>.</li>
+                <li id="ca.5.2.2">Create <var>temporary issuer</var>, an
+                  <a>identifier issuer</a> initialized with the prefix
+                  <code>b</code>.</li>
+                <li id="ca.5.2.3">Use the
+                  <a href="#issue-identifier">Issue Identifier algorithm</a>,
+                  passing <var>temporary issuer</var> and <var>n</var>, to
+                  issue a new temporary <a>blank node identifier</a> <var>b<sub>n</sub></var>
+                  to <var>n</var>.</li>
+                <li id="ca.5.2.4">Run the
+                  <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>,
+                  passing the <a>canonicalization state</a>,
+                  <var>n</var> for <var>identifier</var>, and
+                  <var>temporary issuer</var>,
+                  appending the
+                  result to the <var>hash path list</var>.
+                  <details>
+                    <summary>Logging</summary>
+                    <p>Include logs for each call to <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>.</p>
+                    <pre class="logging yaml nohighlight" data-transform="updateExample">
+                      <!--
+                        # Logs from calls to Hash N-Degree Quads algorithm for shared hashes example
+                        ca:
+                          ####...####
+                          ca.5:
+                            log point: Calculate hashes for identifiers with shared hashes (4.4.3 (5)).
+                            with:
+                              - hash: 3b26142829b8887d011d779079a243bd61ab53c3990d550320a17b59ade6ba36
+                                identifier list: [ "e0", "e1"]
+                                ca.5.2:
+                                  log point: Calculate hashes for identifiers with shared hashes (4.4.3 (5.2)).
+                                  with:
+                                    - identifier: e0
+                                      hndq:
+                                        log point: Hash N-Degree Quads function (4.8.3).
+                                        identifier: e0
+                                        issuer: {e0: b0}
+                                        ####...####
+                                    ####...####
+                                ####...####
+                          ####...####
+                      -->
+                    </pre>
+                  </details>
+                </li>
+              </ol>
+            </li>
+            <li id="ca.5.3">For each <var>result</var> in the <var>hash path list</var>,
+              <a>code point ordered</a> by the <var>hash</var> in <var>result</var>:
+              <details>
+                <summary>Explanation</summary>
+                <p>The previous step created temporary identifiers for the
+                  blank nodes sharing a common first degree hash,
+                  which is now used to generate their canonical identifiers.</p>
+              </details>
+              <ol>
+                <li id="ca.5.3.1">For each <a>blank node identifier</a>,
+                  <var>existing identifier</var>, that was issued a temporary
+                  identifier by <var>identifier issuer</var> in <var>result</var>,
+                  issue a canonical identifier,
+                  in the same order,
+                  using the <a href="#issue-identifier">Issue Identifier algorithm</a>,
+                  passing <a>canonical issuer</a> and <var>existing identifier</var>.
+                  <details>
+                    <summary>Explanation</summary>
+                    <p>In <a href="#ca.5.2">Step 5.2</a>,
+                      <var>hash path list</var> was created with an ordered
+                      set of results.
+                      Each result contained a <var>temporary issuer</var>
+                      which recorded temporary identifiers associated with
+                      a particular <a>blank node identifier</a> in
+                      <var>identifier list</var>.
+                      This step processes each returned <var>temporary issuer</var>,
+                      in order, and allocates canonical identifiers
+                      to the temporary identifier mappings contained
+                      within each <var>temporary issuer</var>,
+                      creating a full order on the remaining blank nodes
+                      with unissued canonical identifiers.
+                    </p>
+                  </details>
+                </li>
+              </ol>
+              <details>
+                <summary>Logging</summary>
+                <p>Log newly issued canonical identifiers.</p>
+                <pre class="logging yaml nohighlight" data-transform="updateExample">
+                  <!--
+                    # Newly issued canonical identifiers from step 5.3 for shared hashes example
+                    ca:
+                      ####...####
+                      ca.5:
+                        log point: Calculate hashes for identifiers with shared hashes (4.4.3 (5)).
+                        with:
+                          - hash: 3b26142829b8887d011d779079a243bd61ab53c3990d550320a17b59ade6ba36
+                            identifier list: [ "e0", "e1"]
+                            ####...####
+                            ca.5.3:
+                              log point: Canonical identifiers for temporary identifiers (4.4.3 (5.3)).
+                              issuer:
+                                  - blank node: e1
+                                    canonical identifier: c14n2
+                                  - blank node: e0
+                                    canonical identifier: c14n3
+                      ####...####
+                  -->
+                </pre>
+              </details>
+            </li>
+          </ol>
+        </li>
+        <li id="ca.6">Add the <a>issued identifiers map</a>
+          from the <a>canonical issuer</a> to the
+          <a>canonicalized dataset</a>.
+          <details>
+            <summary>Explanation</summary>
+            <p>This step adds the <a>issued identifiers map</a>
+              from the <a>canonical issuer</a> to the
+              <a>canonicalized dataset</a>, the [= map/key | keys =] in the
+              <a>issued identifiers map</a> are [= map/entry | map entries =] in the
+              <a>input blank node identifier map</a>.</p>
+          </details>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the state of the <a>canonical issuer</a> at the completion of the algorithm.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Canonical issuer state after step 6 for shared hashes example
+                ca:
+                  ####...####
+                  ca.6:
+                    log point: Issued identifiers map (4.4.3 (6)).
+                    issued identifiers map: {e2: c14n0, e3: c14n1, e1: c14n2, e0: c14n3}
+              -->
+            </pre>
+          </details>
+        </li>
+        <li id="ca.7">Return the <a>serialized canonical form</a>
+          of the <a>canonicalized dataset</a>.
+          Upon request, alternatively (or additionally) return the
+          <a>canonicalized dataset</a> itself, which includes the
+          <a>input blank node identifier map</a>, and
+          <a>issued identifiers map</a> from the <a>canonical issuer</a>.
+          <p class="note">Technically speaking, one implementation
+          might return a <a>canonicalized dataset</a> that maps
+          particular blank nodes to different identifiers than another
+          implementation, however, this only occurs when there are
+          isomorphisms in the dataset such that a canonically serialized
+          expression of the dataset would appear the same from either
+          implementation.</p>
+          <details>
+            <summary>Explanation</summary>
+            <p>The <a>serialized canonical form</a> is an N-Quads
+              document where the blank node identifiers are taken
+              from the canonical identifiers associated with each blank node.</p>
+            <p>The <a>canonicalized dataset</a> is composed of the original
+              <a>input dataset</a>, the <a>input blank node identifier map</a>,
+              containing identifiers for each blank node in the <a>input dataset</a>,
+              and the <a>canonical issuer</a>,
+              containing an <a>issued identifiers map</a>
+              mapping the identifiers in the <a>input blank node identifier map</a>
+              to their canonical identifiers.
+            </p>
+          </details>
+        </li>
+      </ol>
+    </section>
+  </section>
+
+  <section id="issue-identifier" class="algorithm">
+    <h2>Issue Identifier Algorithm</h2>
+
+    <p>This algorithm issues a new <a>blank node identifier</a> for
+      a given existing <a>blank node identifier</a>. It also updates
+      state information that tracks the order in which new
+      <a>blank node identifiers</a> were issued. The order of issuance is
+      important for canonically labeling blank nodes that are isomorphic
+      to others in the dataset.</p>
+
+    <section id="issue-identifier-overview">
+      <h3>Overview</h3>
+
+      <p>The algorithm maintains an <a>issued identifiers map</a> to
+        relate an existing <a>blank node identifier</a> from the <a>input dataset</a>
+        to a new <a>blank node identifier</a> using a given <a>identifier prefix</a>
+        (<code><em>c14n</em></code>) with new identifiers issued by appending an incrementing number.
+        For example, when called for a blank node identifier such as <code><em>e3</em></code>,
+        it might result in a issued identifier of <code><em>c14n1</em></code>.</p>
+    </section>
+
+    <section id="issue-identifier-algorithm">
+      <h3>Algorithm</h3>
+
+      <p>The algorithm takes an <a>identifier issuer</a> <var>I</var> and an
+        <var>existing identifier</var> as inputs. The output is a new
+        <var>issued identifier</var>. The steps of the algorithm are:</p>
+
+      <ol>
+        <li id="iia-1">If there is a
+          [= map/entry | map entry =] for <var>existing identifier</var> in
+          <a>issued identifiers map</a> of <var>I</var>,
+          return it.</li>
+        <li id="iia-2">Generate <var>issued identifier</var> by concatenating
+          <a>identifier prefix</a> with the string value of
+          <a>identifier counter</a>.</li>
+        <li id="iia-3">Add an [= map/entry =]
+          mapping <var>existing identifier</var> to <var>issued identifier</var>
+          to the <a>issued identifiers map</a> of <var>I</var>.</li>
+        <li id="iia-4">Increment <a>identifier counter</a>.</li>
+        <li id="iia-5">Return <var>issued identifier</var>.</li>
+      </ol>
+    </section>
+  </section>
+
+  <section id="hash-1d-quads" class="algorithm">
+    <h2>Hash First Degree Quads</h2>
+
+    <p>This algorithm calculates a <a>hash</a> for a given <a>blank node</a>
+      across the <a>quads</a> in a <a>dataset</a> in which that blank node
+      is a component.
+      If the hash uniquely identifies that blank node,
+      no further examination is necessary.
+      Otherwise, a hash will be created for the blank node using
+      the algorithm in <a href="#hash-nd-quads" class="sectionRef"></a>
+      invoked via <a href="#canon-algorithm" class="sectionRef"></a>.</p>
+
+    <section id="hash-1d-quads-overview" class="informative">
+      <h3>Overview</h3>
+
+      <p>To determine whether the first degree information of a node <var>n</var> is unique,
+        a <a>hash</a> is assigned to its <a>mention set</a>,
+        <var>Q<sub>n</sub></var>.
+        The first degree hash of a blank node <var>n</var>,
+        denoted <var>h<sub>f</sub>(n)</var>,
+        is the hash that results from <a href="#hash-1d-quads" class="sectionRef"></a>
+        when passing <var>n</var>.
+        Nodes with unique first degree hashes have unique first degree information.</p>
+
+      <p>For consistency, <a>blank node identifiers</a> used in <var>Q<sub>n</sub></var>
+        are replaced with placeholders in a <a>canonical n-quads</a> serialization of that quad.
+        Every blank node component is replaced with either <code><em>a</em></code> or <code><em>z</em></code>,
+        depending on if that component is <var>n</var> or not.</p>
+
+      <p>The resulting serialized quads are then <a>code point ordered</a>,
+        concatenated, and hashed.
+        This hash is the first degree hash of <var>n</var>, <var>h<sub>f</sub>(n)</var>.</p>
+    </section>
+
+    <section id="hash-1d-quads-examples" class="informative">
+      <h3>Examples</h3>
+
+      <aside id="ex-1d-unique-hashes"
+            class="example"
+            title="Unique hashes">
+        <p>This example illustrates hashing quads containing
+          blank nodes where hashing the statements <a data-lt="mention">mentioning</a>
+          those blank nodes generates unique results.</p>
+
+        <figure id="fig-unique-hashes" style="text-align:center">
+          <!-- Source for this file is at https://docs.google.com/drawings/d/1LQ6fp4a35lrEOKRMD20gcncUkoitX0eW8QI_U2mQnAs -->
+          <object data="unique-hashes.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-unique-hashes-alt">
+            <p id="fig-unique-hashes-alt">
+              The image represents the graph described in
+              <a href="#ex-1d-unique-hashes-input">
+                the following code block
+              </a>.</p>
+          </object>
+          <figcaption>An illustration of a graph resulting in unique hashes.<br/>
+            Image available in
+            <a href="unique-hashes.svg" title="SVG image of unique hashes">
+              <abbr title="Scalable Vector Graphics">SVG</abbr>
+            </a>.</figcaption>
+        </figure>
+
+        <pre id="ex-1d-unique-hashes-input"
+             data-transform="updateExample"
+             title="Graph with blank nodes resulting in unique hashes">
+          <!--
+            :p :q _:e0 .
+            :p :r _:e1 .
+            _:e0 :s :u .
+            _:e1 :t :u .
+          -->
+        </pre>
+
+        <p>The algorithm will be called twice, with each blank node (<code><em>e0</em></code> and <code><em>e1</em></code>).
+          Running the algorithm with the reference node <code><em>e0</em></code> results in the
+          following quads, after replacing blank nodes:</p>
+
+        <pre id="ex-1d-unique-hashes-e0-quads" data-transform="updateExample">
+          <!--
+            :p :q _:a .
+            _:a :s :u .
+          -->
+        </pre>
+
+        <p>These are then serialized to <a>canonical n-quads form</a>:
+          <code id="ex-1d-unique-hashes-e0-quads-c14n"
+            data-result-for="ex-1d-unique-hashes-e0-quads"
+            data-xform="to-c14n-quads"
+          >'&lt;http://example.com/#p&gt; &lt;http://example.com/#q&gt; _:a .\n_:a &lt;http://example.com/#s&gt; &lt;http://example.com/#u&gt; .\n'</code>,
+          concatenated and hashed
+          using the <a>hash algorithm</a> (SHA-256) resulting in
+          <code id="ex-1d-unique-hashes-e0-quads-hash"
+            data-result-for="ex-1d-unique-hashes-e0-quads"
+            data-xform="to-sha256"
+          >21d1dd5ba21f3dee9d76c0c00c260fa6f5d5d65315099e553026f4828d0dc77a</code>.
+        </p>
+
+        <p>The algorithm is run a second time with the reference node <code><em>e1</em></code> resulting
+          in the following quads:</p>
+
+        <pre id="ex-1d-unique-hashes-e1-quads" data-transform="updateExample">
+          <!--
+            :p :r _:a .
+            _:a :t :u .
+          -->
+        </pre>
+
+        <p>These are then serialized to <a>canonical n-quads form</a>:
+          <code id="ex-1d-unique-hashes-e1-quads-c14n"
+            data-result-for="ex-1d-unique-hashes-e1-quads"
+            data-xform="to-c14n-quads"
+          >'&lt;http://example.com/#p&gt; &lt;http://example.com/#r&gt; _:a .\n_:a &lt;http://example.com/#t&gt; &lt;http://example.com/#u&gt; .\n'</code>,
+          concatenated and hashed as before resulting in
+          <code id="ex-1d-unique-hashes-e1-quads-hash"
+            data-result-for="ex-1d-unique-hashes-e1-quads"
+            data-xform="to-sha256"
+          >6fa0b9bdb376852b5743ff39ca4cbf7ea14d34966b2828478fbf222e7c764473</code>.
+        </p>
+
+        <p>Thus the generated hashes each reference just a single blank node,
+          allowing the canonicalization algorithm to use only the
+          Hash First Degree Quads algorithm.</p>
+      </aside>
+
+      <aside id="ex-1d-shared-hashes"
+            class="example"
+            title="Shared hashes">
+        <p>This example illustrates hashing quads containing
+          blank nodes where hashing the statements <a data-lt="mention">mentioning</a>
+          those blank nodes have overlapping results.</p>
+
+        <figure id="fig-shared-hashes" style="text-align:center">
+          <!-- Source for this file is at https://docs.google.com/drawings/d/1HWpz8S-PNaWi02-utF62HAMd_0b-AF_tHNSRRUQILbU -->
+          <object data="shared-hashes.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-shared-hashes-alt">
+            <p id="fig-shared-hashes-alt">
+              The image represents the graph described in
+              <a href="#ex-1d-shared-hashes-input">
+                the following code block
+              </a>.</p>
+          </object>
+          <figcaption>An illustration of a graph resulting in shared hashes.<br/>
+            Image available in
+            <a href="shared-hashes.svg" title="SVG image of a graph resulting in shared hashes">
+              <abbr title="Scalable Vector Graphics">SVG</abbr>
+            </a>.</figcaption>
+        </figure>
+
+        <pre id="ex-1d-shared-hashes-input"
+             data-transform="updateExample"
+             title="Graph with blank nodes resulting in shared hashes">
+          <!--
+            :p :q _:e0 .
+            :p :q _:e1 .
+            _:e0 :p _:e2 .
+            _:e1 :p _:e3 .
+            _:e2 :r _:e3 .
+          -->
+        </pre>
+
+        <p>The algorithm will be called four times, with each blank node
+          (<code><em>e0</em></code>, <code><em>e1</em></code>, <code><em>e2</em></code>, and <code><em>e3</em></code>).
+          Running the algorithm with the reference node <code><em>e0</em></code> results in the
+          following quads, after replacing blank nodes:</p>
+
+        <pre id="ex-1d-shared-hashes-e0-quads" data-transform="updateExample">
+          <!--
+            :p :q _:a .
+            _:a :p _:z .
+          -->
+        </pre>
+
+        <p>Which hashes to:
+          <code id="ex-1d-shared-hashes-e0-quads-hash"
+            data-result-for="ex-1d-shared-hashes-e0-quads"
+            data-xform="to-sha256"
+          >3b26142829b8887d011d779079a243bd61ab53c3990d550320a17b59ade6ba36</code>.
+        </p>
+
+        <p>Note that using reference node <code><em>e1</em></code> results in the same quads,
+          and thus results in the same hash.</p>
+
+        <p>Using the reference node <code><em>e2</em></code> results in the following quads:</p>
+
+        <pre id="ex-1d-shared-hashes-e2-quads" data-transform="updateExample">
+          <!--
+            _:z :p _:a .
+            _:a :r _:z .
+          -->
+        </pre>
+
+        <p>Which hashes to:
+          <code id="ex-1d-shared-hashes-e2-quads-hash"
+            data-result-for="ex-1d-shared-hashes-e2-quads"
+            data-xform="to-sha256"
+          >15973d39de079913dac841ac4fa8c4781c0febfba5e83e5c6e250869587f8659</code>.
+        </p>
+
+        <p>Lastly, using the reference node <code><em>e3</em></code> results in the following quads:</p>
+
+        <pre id="ex-1d-shared-hashes-e3-quads" data-transform="updateExample">
+          <!--
+            _:z :p _:a .
+            _:z :r _:a .
+          -->
+        </pre>
+
+        <p>Which hashes to:
+          <code id="ex-1d-shared-hashes-e3-quads-hash"
+            data-result-for="ex-1d-shared-hashes-e3-quads"
+            data-xform="to-sha256"
+          >7e790a99273eed1dc57e43205d37ce232252c85b26ca4a6ff74ff3b5aea7bccd</code>.
+        </p>
+
+        <p>The hashes for <code><em>e2</em></code> and <code><em>e3</em></code> are unique, but <code><em>e0</em></code>,
+          and <code><em>e1</em></code> share a common hash,
+          which will require the use of the
+          <a href="#hash-nd-quads-algorithm">Hash N-Degree Quads Algorithm</a>,
+          as it is necessary to consider quads further removed from the direct <a>mentions</a>
+          to determine a unique hash.</p>
+      </aside>
+    </section>
+
+    <section id="hash-1d-quads-algorithm">
+      <h3>Algorithm</h3>
+
+      <p>This algorithm takes the <a>canonicalization state</a> and a
+        <dfn>reference blank node identifier</dfn> as inputs.</p>
+
+      <ol id="h1dq">
+        <li id="h1dq.1">Initialize <dfn class="no-export">nquads</dfn> to an empty <a>list</a>.
+          It will be used to store quads in <a>canonical n-quads form</a>.</li>
+        <li id="h1dq.2">Get the <a>list</a> of <a>quads</a> <var>quads</var>
+          from the [= map/entry | map entry =] for
+          <a>reference blank node identifier</a> in the
+          <a>blank node to quads map</a>.</li>
+        <li id="h1dq.3">For each <a>quad</a> <var>quad</var> in <var>quads</var>:
+          <ol>
+            <li id="h1dq.3.1">Serialize the <a>quad</a> in <a>canonical n-quads form</a> with the
+              following special rule:
+              <ol>
+                <li id="h1dq.3.1.1">If any component in <var>quad</var> is an
+                  <a>blank node</a>, then serialize it using a
+                  special identifier as follows:
+                  <ol>
+                    <li id="h1dq.3.1.1.1">If the <a>blank node</a>'s existing
+                    <a>blank node identifier</a> matches the
+                    <a>reference blank node identifier</a> then use the
+                    <a>blank node identifier</a> <code>a</code>,
+                    otherwise, use the <a>blank node identifier</a>
+                    <code>z</code>.</li>
+                  </ol>
+                </li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+        <li id="h1dq.4">Sort <a>nquads</a> in <a>Unicode code point order</a>.</li>
+        <li id="h1dq.5">Return the <a>hash</a> that results from passing the sorted
+          and concatenated <a>nquads</a> through the
+          <a>hash algorithm</a>.
+          <details>
+            <summary>Logging</summary>
+            <p>Log the inputs and result of running this algorithm.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Inputs and hash result for the Hash First Degree Hash algorithm for unique hashes example
+                h1dq:
+                  log point: Hash First Degree Quads function (4.6.3).
+                  nquads:
+                    - <http://example.com/#p> <http://example.com/#q> _:a .
+                    - _:a <http://example.com/#s> <http://example.com/#u> .
+                  hash: 21d1dd5ba21f3dee9d76c0c00c260fa6f5d5d65315099e553026f4828d0dc77a
+              -->
+            </pre>
+          </details>
+        </li>
+      </ol>
+    </section>
+  </section>
+
+  <section id="hash-related-blank-node" class="algorithm">
+    <h2>Hash Related Blank Node</h2>
+
+    <p>This algorithm generates a <a>hash</a> for some
+      <a>blank node</a> component of a <a>quad</a>,
+      considering its position within that quad.
+      This is used as part of the
+      <a href="#hash-nd-quads-algorithm">Hash N-Degree Quads algorithm</a>
+      to characterize the blank nodes related to some particular blank node
+      within their <a>mention sets</a>.
+    </p>
+
+    <section id="hash-related-bn-overview" class="informative">
+      <h3>Overview</h3>
+
+      <p>An <em>identifier</em> for a <a>blank node</a>, <var>related</var>,
+        which is a component of some <a>quad</a>, is used along
+        with information describing its position within the quad to create
+        a representation of that blank node within the quad,
+        which is then hashed.
+        The identifier is first found from the following:
+      </p>
+      <ol>
+        <li>An issued identifier from <a>canonical issuer</a> in the <a>canonicalization state</a>,</li>
+        <li>An issued identifier from <var>issuer</var>, or</li>
+        <li>the result of the
+          <a href="#hash-nd-quads-algorithm">Hash N-Degree Quads algorithm</a>
+          for <var>related</var>.</li>
+      </ol>
+    </section>
+
+    <section id="hash-related-bn-examples" class="informative">
+      <h3>Examples</h3>
+
+      <aside id="hash-related-ex1"
+            class="example"
+            title="With assigned canonical identifier">
+        <p>This example illustrates generating the related hash
+          for a blank node component of a quad, where the component
+          is in the <a>object</a> position and has already had
+          an assigned canonical identifier from the <a>canonical issuer</a>.</p>
+
+        <p>Given the predicate `:p`,
+          <var>related</var> <a>blank node</a> <code><em>e2</em></code>
+          (already assigned the canonical <a>blank node identifier</a> <code><em>c14n0</em></code>),
+          an <var>input</var>
+          is created as `o&lt;http://example.com/#p&gt;_:c14n0`,
+          which hashes to `29cf7e22790bc2ed395b81b3933e5329fc7b25390486085cac31ce7252ca60fa`.</p>
+
+        <p>If such an identifier had not yet been established,
+          it would instead use the results of the
+          <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a>,
+          without the leading `_:`.</p>
+      </aside>
+    </section>
+
+    <section id="hash-related-algorithm">
+      <h3>Algorithm</h3>
+
+      <p>This algorithm creates a <a>hash</a> to identify how one
+        <a>blank node</a> is related to another. It takes the
+        <a>canonicalization state</a>, a <var>related</var>
+        <a>blank node identifier</a>, a <var>quad</var>, an
+        <a>identifier issuer</a>, <var>issuer</var>, and a
+        <a>string</a> <var>position</var> as inputs.</p>
+
+      <ol id="hrbn">
+        <li id="hrbn.1">Initialize a <a>string</a> <var>input</var> to the value of
+          <var>position</var>.</li>
+        <li id="hrbn.2">If <var>position</var> is not <code>g</code>, append
+          <code>&lt;</code>, the value of the <a>predicate</a> in
+          <var>quad</var>, and <code>&gt;</code> to <var>input</var>.</li>
+        <li id="hrbn.3">If there is a canonical identifier for <var>related</var>,
+          or an identifier issued by <var>issuer</var>,
+          append the string `_:`, followed by that identifier (using the canonical
+          identifier if present, otherwise the one issued by <var>issuer</var>) to
+          <var>input</var>.
+          <details>
+            <summary>Explanation</summary>
+            <p>If a canonical identifier was already issued for <var>related</var>,
+              it will be in the <a>canonical issuer</a> contained within
+              <a>canonicalization state</a>.
+              Otherwise, the temporary <var>issuer</var> instance may already
+              have a mapping for <var>related</var>.</p>
+          </details>
+        </li>
+        <li id="hrbn.4">Otherwise,
+          append the result of the
+          <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a>,
+          passing <var>related</var> to <var>input</var>.
+          <details>
+            <summary>Explanation</summary>
+            <p>If no identifier, canonical or temporary, has already been issued,
+              a new identifier is created using the
+              <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a>.</p>
+            <p>Note that <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a>
+              has already been called on all blank nodes in step <a href="#ca.3">3</a>
+              of the <a href="#canon-algorithm">Canonicalization algorithm</a>.
+              Implementations should consider reusing a previously determined result rather than execute the
+              <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a> again.</p>
+          </details>
+        </li>
+        <li id="hrbn.5">Return the <a>hash</a> that results from passing <var>input</var>
+          through the <a>hash algorithm</a>.
+          <details>
+            <summary>Explanation</summary>
+            <p>This resulting string is used to generate a hash; in this respect, it is similar to
+              the <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a> which
+              uses the serialization of <a>quads</a> in <a>nquads</a> for hashing. For the sake of consistency, the
+              <a>nquad</a> representation of <var>identifier</var> is used in this step, hence the
+              appearance of the <code>_:</code> string.</p>
+          </details>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the inputs and result of running this algorithm.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Inputs and hash result for the Hash Related Blank algorithm for shared hashes example
+                hndq3.1:
+                  log point: Hash related bnode component (4.8.3 (3.1))
+                  with:
+                    - position: o
+                      related: e2
+                      input: "o<http://example.com/#p>_:c14n0"
+                      hash: 29cf7e22790bc2ed395b81b3933e5329fc7b25390486085cac31ce7252ca60fa
+              -->
+            </pre>
+          </details>
+        </li>
+      </ol>
+    </section>
+  </section>
+
+  <section id="hash-nd-quads" class="algorithm">
+    <h2>Hash N-Degree Quads</h2>
+
+    <p>This algorithm calculates a <a>hash</a> for a given <a>blank node</a>
+      across the <a>quads</a> in a <a>dataset</a> in which that blank node
+      is a component for which the hash does not uniquely identify that blank node.
+      This is done by expanding the search from quads directly referencing that
+      blank node (the <a>mention set</a>), to those quads
+      which contain nodes which are also components of quads in the mention set,
+      called the <a>gossip path</a>.
+      This process proceeds in every greater degrees of indirection until
+      a unique hash is obtained.</p>
+
+    <section id="hash-nd-quads-overview" class="informative">
+      <h3>Overview</h3>
+
+      <p>Usually, when trying to determine if two nodes in a graph are
+        equivalent, you simply compare their identifiers. However, what if the
+        nodes don't have identifiers? Then you must determine if the two nodes
+        have equivalent connections to equivalent nodes all throughout the
+        whole graph. This is called the <a>graph isomorphism</a> problem. This
+        algorithm approaches this problem by considering how one might draw
+        a graph on paper. You can test to see if two nodes are equivalent
+        by drawing the graph twice. The first time you draw the graph the
+        first node is drawn in the center of the page. If you can draw the
+        graph a second time such that it looks just like the first, except
+        the second node is in the center of the page, then the nodes are
+        equivalent. This algorithm essentially defines a deterministic way to
+        draw a graph where, if you begin with a particular node, the graph
+        will always be drawn the same way. If two graphs are drawn the same way
+        with two different nodes, then the nodes are equivalent. A
+        <a>hash</a> is used to indicate a particular way that the graph
+        has been drawn and can be used to compare nodes.</p>
+
+      <p>When two blank nodes have the same first degree hash,
+        extra steps must be taken to detect global,
+        or <em>N</em>-degree, distinctions.
+        All information that is in any way connected to the blank node <var>n</var>
+        through other blank nodes, even transitively, must be considered.</p>
+
+      <p>To consider all transitive information,
+        the algorithm traverses and encodes all possible paths of incident
+        <a>mentions</a> emanating from <var>n</var>, called <a>gossip paths</a>,
+        that reach every unlabeled blank node connected to <var>n</var>.
+        Each unlabeled blank node is assigned a temporary identifier
+        in the order in which it is reached in the
+        gossip path being explored.
+        The mentions that are traversed to reach
+        connected blank nodes are encoded in these paths via related hashes.
+        This provides a deterministic way to order all paths coming from <var>n</var> that
+        reach all blank nodes connected to n without relying on input blank
+        node identifiers.</p>
+
+      <p>This algorithm works in concert with the main canonicalization algorithm
+        to produce a unique, deterministic identifier for a particular blank
+        node. This <a>hash</a> incorporates all of the information that
+        is connected to the blank node as well as how it is connected. It does
+        this by creating deterministic paths that emanate out from the blank
+        node through any other adjacent blank nodes.</p>
+
+      <p>Ultimately, the algorithm selects the shortest <a>gossip path</a>
+        (based on its encoding as a string), distributing canonical
+        identifiers to the unlabeled blank nodes in the order in which they
+        appear in this path.
+        The hash of this encoded shortest path,
+        called the N-degree hash of <var>n</var>,
+        distinguishes <var>n</var> from other blank nodes in the dataset.</p>
+
+      <p>For clarity, we consider a <a>gossip path</a> encoded via the string <var>s</var>
+        to be shortest provided that:</p>
+
+      <ol>
+        <li>The length of <var>s</var> is less than or equal to the length
+          of any other gossip path string <var>s′</var>.</li>
+        <li>If <var>s</var> and <var>s′</var> have the same length (as strings),
+          then <var>s</var> is <a>code point ordered</a> less than or equal to <var>s′</var>.</li>
+      </ol>
+
+      <p>For example, <em>abc</em> is shorter than <em>bbc</em>,
+        whereas <em>abcd</em> is longer than <em>bcd</em>.</p>
+
+      <p>The following provides a high level outline for how the N-degree hash of <var>n</var>
+        is computed along the shortest <a>gossip path</a>.
+        Note that the full algorithm considers all gossip paths,
+        ultimately returning the <a>hash</a> of the shortest encoded path.</p>
+
+      <ol>
+        <li id="ndh-hl-s1"><strong>Compute related hashes</strong>.
+          Compute the related hash <var>H<sub>n</sub></var> set for <var>n</var>,
+          i.e., all first degree <a>mentions</a> between <var>n</var> and another blank node.
+          Note that this includes both unlabeled blank nodes and those
+          already issued a canonical identifier (labeled blank nodes).</li>
+        <li id="ndh-hl-s2"><strong>Explore mentions</strong>.
+          Given the related hash <var>x</var> in <var>H<sub>n</sub></var>,
+          record <var>x</var> in the data to hash <var>D<sub>n</sub></var>.
+          Determine whether each blank node reachable via the <a>mention</a> with related hash <var>x</var>
+          has already received an identifier.
+          <ol>
+            <li id="ndh-hl-s2-1"><strong>Record the identifiers of labeled nodes</strong>.
+              If a blank node already has an identifier,
+              record its identifier in <var>D<sub>n</sub></var> once for every
+              <a>mention</a> with related hash <var>x</var>.
+              Skip to the next related hash in <var>H<sub>n</sub></var>
+              and repeat <a href="#ndh-hl-s2">step 2</a>.</li>
+            <li id="ndh-hl-s2-2"><strong>Distribute and record temporary identifiers to unlabeled nodes</strong>.
+              For each unlabeled blank node,
+              assign it a temporary identifier according to the order in which it is reached in the gossip path,
+              recording its given identifier in <var>D<sub>n</sub></var> (including repetitions).
+              Add each unlabeled node to the recursion list <var>R<sub>n</sub>(x)</var>
+              in this same order (omitting repetitions).</li>
+            <li id="ndh-hl-s2-3"><strong>Recurse on newly labeled nodes</strong>.
+              For each <var>n<sub>i</sub></var> in <var>R<sub>n</sub>(x)</var>
+              <ol>
+                <li id="ndh-hl-s2-3-1">Record its identifier in <var>D<sub>n</sub></var></li>
+                <li id="ndh-hl-s2-3-2">Append &lt; <var>r(i)</var> > to <var>D<sub>n</sub></var>
+                  where <var>r(i)</var> is the data to hash that results from returning to
+                  <a href="#ndh-hl-s1">step 1</a>,
+                  replacing <var>n</var> with <var>n<sub>i</sub></var>.</li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+        <li id="ndh-hl-s3"><strong>Compute the <em>N</em>-degree hash of n</strong>.
+          Hash <var>D<sub>n</sub></var> to return the <em>N</em>-degree hash of <var>n</var>,
+          namely <var>h<sub>N</sub>(n)</var>.
+          Return the updated issuer <var>I<sub>n</sub></var>
+          that has now distributed temporary identifiers to all unlabeled blank nodes connected to <var>n</var>.</li>
+      </ol>
+
+      <p>As described above in <a href="#ndh-hl-s2-3">step 2.3</a>,
+        <var>HN</var> recurses on each unlabeled blank node
+        when it is first reached along the <a>gossip path</a> being explored.
+        This recursion can be visualized as moving along the path from <var>n</var>
+        to the blank node <var>n<sub>i</sub></var> that is receiving a temporary identifier.
+        If, when recursing on <var>n<sub>i</sub></var>,
+        another unlabeled blank node <var>n<sub>j</sub></var> is discovered,
+        the algorithm again recurses.
+        Such a recursion traces out the <a>gossip path</a> from <var>n</var>
+        to <var>n<sub>j</sub></var> via <var>n<sub>i</sub></var>.</p>
+
+      <p>The recursive hash <var>r(i)</var> is the <a>hash</a> returned from
+        the completed recursion on the node <var>n<sub>i</sub></var>
+        when computing <var>h<sub>N</sub>(n)</var>.
+        Just as <var>h<sub>N</sub>(n)</var> is the hash of <var>D<sub>n</sub></var>,
+        we denote the data to hash in the recursion on <var>n<sub>i</sub></var>
+        as <var>D<sub>i</sub></var>.
+        So, <var>r(i)</var> = <var>h(D<sub>i</sub>)</var>.
+        For each related hash <var>x</var> ∈ <var>H<sub>n</sub></var>,
+        <var>R<sub>n</sub>(x)</var> is called the <em>recursion list</em> on
+        which the algorithm recurses.</p>
+    </section>
+
+    <section id="hash-nd-quads-examples" class="informative">
+      <h3>Examples</h3>
+
+      <aside id="ex-nd-shared-hashes"
+            class="example"
+            title="Shared hashes">
+
+        <p>This example revisits <a href="#ex-ca-shared-hashes"></a>
+          to illustrate the operation of the
+          <a href="#hash-nd-quads-algorithm">Hash N-Degree Quads Algorithm</a>
+          on the blank nodes (<code><em>e0</em></code> and <code><em>e1</em></code>) which resulted in a shared result from the
+          <a href="#hash-1d-quads-algorithm">Hash First Degree Quads Algorithm</a>.
+          The other blank nodes (<code><em>e2</em></code> and <code><em>e3</em></code>) had unique
+          hashes when processed by the
+          <a href="#hash-1d-quads-algorithm">Hash N-Degree Quads Algorithm</a>,
+          so that canonical identifiers have already been issued,
+          as recorded in the <a>identifier issuer</a> instance.</p>
+
+        <table id="ex-nd-shared-table-input-canon-mapping"
+               class="hash-related numbered">
+          <caption>Established canonical identifiers from <a>canonical issuer</a></caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>canonical identifier</var></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><code><em>e2</em></code></td><td><code><em>c14n0</em></code></td></tr>
+            <tr><td><code><em>e3</em></code></td><td><code><em>c14n1</em></code></td></tr>
+          </tbody>
+        </table>
+
+        <figure id="fig-nd-shared-hashes" style="text-align:center">
+          <!-- Source for this file is at https://docs.google.com/drawings/d/1HWpz8S-PNaWi02-utF62HAMd_0b-AF_tHNSRRUQILbU -->
+          <object data="shared-hashes.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-nd-shared-hashes-alt">
+            <p id="fig-nd-shared-hashes-alt">
+              The image represents the graph described in
+              <a href="#ex-nd-shared-hashes-input">
+                the following code block
+              </a>.</p>
+          </object>
+          <figcaption>An illustration of a graph resulting in shared hashes.<br/>
+            Image available in
+            <a href="shared-hashes.svg" title="SVG image of a graph resulting in shared hashes">
+              <abbr title="Scalable Vector Graphics">SVG</abbr>
+            </a>.</figcaption>
+        </figure>
+
+        <pre id="ex-nd-shared-hashes-input"
+             data-transform="updateExample"
+             title="Graph with blank nodes resulting in shared hashes">
+          <!--
+            :p :q ****_:e0**** .
+            :p :q ****_:e1**** .
+            ****_:e0**** :p _:e2 .
+            ****_:e1**** :p _:e3 .
+            _:e2 :r _:e3 .
+          -->
+        </pre>
+
+        <p>The algorithm will be called twice, with each blank node
+           which did not result in a unique hash
+          from the <a href="#hash-1d-quads-algorithm">Hash First Degree Quads Algorithm</a>
+          (<code><em>e0</em></code> and <code><em>e1</em></code>).
+          The <a data-cite="INFRA#map-entry">map entry</a> for <code><em>e0</em></code> in the <a>blank node to quads map</a> results in the
+          following quads:</p>
+
+        <pre id="ex-nd-shared-hashes-e0-quads" data-transform="updateExample">
+          <!--
+            :p :q _:e0 .
+            _:e0 :p _:e2 .
+          -->
+        </pre>
+
+        <p>When called, the <var>temporary issuer</var> has the following mappings:</p>
+
+        <table id="ex-nd-shared-table-input-temporary-mapping-e0"
+               class="hash-related numbered">
+          <caption>Initial mappings in <var>temporary issuer</var> for <code><em>e0</em></code></caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>temporary identifier</var></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><code><em>e0</em></code></td><td><code><em>b0</em></code></td></tr>
+          </tbody>
+        </table>
+
+        <p><a href="#hndq.3">Step 3</a> iterates over each of these quads
+          to find <a>blank node</a> <var>components</var>
+          to populate <var>H<sub>n</sub></var>
+          with the result of running the
+          <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>
+          using the <var>position</var> of that <var>component</var> within the quad.</p>
+
+        <table id="ex-nd-shared-table-related-hash-e0"
+               class="hash-related numbered">
+          <caption>Hash for <code><em>e2</em></code>  related to <code><em>e0</em></code></caption>
+          <thead><tr>
+            <th><var>related</var></th>
+            <th><var>quad</var></th>
+            <th><var>position</var></th>
+            <th><var>hash</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code><em>e2</em></code></td>
+              <td>`e0&nbsp;:p&nbsp;e2&nbsp;.`</td>
+              <td>`o`</td>
+              <td>
+                <!-- canonical identifier _:e2 is _:c14n0 -->
+                <!-- hash "o<http://example.com/#p>_:c14n0"-->
+                <code><abbr title="29cf7e22790bc2ed395b81b3933e5329fc7b25390486085cac31ce7252ca60fa">29cf7e2279...7252ca60fa</abbr></code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>which results in the following <var>H<sub>n</sub></var>:</p>
+
+        <table id="ex-nd-shared-table-bn-list-e0"
+               class="hash-related numbered">
+          <caption>Blank node list for hash</caption>
+          <thead><tr>
+            <th><var>related hash</var></th>
+            <th><var>blank node list</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code>29cf7e22790bc2ed395b81b3933e5329fc7b25390486085cac31ce7252ca60fa</code></td>
+              <td><code>[ <em>e2</em> ]</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#hndq.5">Step 5</a> iterates over each <var>related hash</var>
+          which is a key in <var>H<sub>n</sub></var>,
+          which can have one or more related blank nodes,
+          which determines the shortest <a>gossip path</a> between
+          the two nodes (<code><em>e0</em></code> and <code><em>e2</em></code>).
+          In this case, the hash maps to just <code><em>e2</em></code>,
+          for which a canonical identifier has already been chosen (<code><em>c14n0</em></code>),
+          so there is a single permutation
+          resulting in one candidate path.
+          The resulting <var>chosen path</var> is `_:c14n0`.</p>
+
+        <p>The string <var>data to hash</var> is composed
+          of the single <var>related hash</var> and the <var>chosen path</var>:
+          `29cf7e22790bc2ed395b81b3933e5329fc7b25390486085cac31ce7252ca60fa_:c14n0`,
+          which hashes to
+          `fbc300de5afafd97a4b9ee1e72b57754dcdcb7ebb724789ac6a94a5b82a48d30`,
+          which, along with the <var>temporary issuer</var> used to traverse
+          these paths, is the result of the algorithm:</p>
+
+        <table id="ex-nd-shared-result-e0"
+               class="hash-related numbered">
+          <caption>Result for <code><em>e0</em></code></caption>
+          <tbody>
+            <tr>
+              <td><var>temporary issuer</var> mappings</td>
+              <td>
+                <table class="hash-related">
+                  <thead><tr>
+                    <th><var>original identifier</var></th>
+                    <th><var>temporary identifier</var></th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td><code><em>e0</em></code></td><td><code><em>b0</em></code></td></tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td><var>hash</var></td>
+              <td>`fbc300de5afafd97a4b9ee1e72b57754dcdcb7ebb724789ac6a94a5b82a48d30`</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>The algorithm is called again for <code><em>e1</em></code>.</p>
+
+        <table id="ex-nd-shared-table-input-temporary-mapping-e1"
+               class="hash-related numbered">
+          <caption>Initial mappings in <var>temporary issuer</var> for <code><em>e1</em></code></caption>
+          <thead><tr>
+            <th><var>blank node</var></th>
+            <th><var>temporary identifier</var></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><code><em>e1</em></code></td><td><code><em>b0</em></code></td></tr>
+          </tbody>
+        </table>
+
+        <p>The <a data-cite="INFRA#map-entry">map entry</a> for <code><em>e1</em></code> in the <a>blank node to quads map</a> results in the
+          following quads:</p>
+
+        <pre id="ex-nd-shared-hashes-e1-quads" data-transform="updateExample">
+          <!--
+            :p :q _:e1 .
+            _:e1 :p _:e3 .
+          -->
+        </pre>
+
+        <p><a href="#hndq.3">Step 3</a> again calculates <a>blank node</a> <var>components</var>
+          using
+          <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>.</p>
+
+        <table id="ex-nd-shared-table-related-hash-e1"
+               class="hash-related numbered">
+          <caption>Hash for <code><em>e3</em></code>  related to <code><em>e1</em></code></caption>
+          <thead><tr>
+            <th><var>related</var></th>
+            <th><var>quad</var></th>
+            <th><var>position</var></th>
+            <th><var>hash</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code><em>e3</em></code></td>
+              <td>`e1&nbsp;:p&nbsp;e3&nbsp;.`</td>
+              <td>`o`</td>
+              <td>
+                <!-- canonical identifier _:e3 is _:c14n1 -->
+                <!-- hash "o<http://example.com/#p>_:c14n1"-->
+                <code><abbr title="b7956ea1d654d5824496eb439a1f2b79478bd7d02d4a115f4c97cbff6b098216">b7956ea1d6...ff6b098216</abbr></code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>which results in the following <var>H<sub>n</sub></var>:</p>
+
+        <table id="ex-nd-shared-table-bn-list-e1"
+               class="hash-related numbered">
+          <caption>Blank node list for hash</caption>
+          <thead><tr>
+            <th><var>related hash</var></th>
+            <th><var>blank node list</var></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code>b7956ea1d654d5824496eb439a1f2b79478bd7d02d4a115f4c97cbff6b098216</code></td>
+              <td><code>[ <em>e3</em> ]</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="#hndq.5">Step 5</a>
+          runs in essentially the same manner, mapping just <code><em>e3</em></code>
+          having the canonical identifier <code><em>c14n1</em></code>,
+          so there is again a single permutation
+          resulting in one candidate path.
+          The resulting <var>chosen path</var> is `_:c14n1`.</p>
+
+        <p>The string <var>data to hash</var> is composed
+          of the single <var>related hash</var> and the <var>chosen path</var>:
+          `af54b9512b1ef069205e8e41bc5a96e86a108b0389caa5029f2c3fd0bc465246_:c14n1`,
+          which hashes to
+          `767a5e66f509221f45003a16c12a89d4d9675cfa51ffa80459b63606bdfc2ada`.</p>
+
+        <p>The string <var>data to hash</var> is composed
+          of the single <var>related hash</var> and the <var>chosen path</var>:
+          `b7956ea1d654d5824496eb439a1f2b79478bd7d02d4a115f4c97cbff6b098216_:c14n1`,
+          which hashes to
+          `fbc300de5afafd97a4b9ee1e72b57754dcdcb7ebb724789ac6a94a5b82a48d30`,
+          which, along with the <var>temporary issuer</var> used to traverse
+          these paths, is the result of the algorithm:</p>
+
+        <table id="ex-nd-shared-result-e1"
+               class="hash-related numbered">
+          <caption>Result for <code><em>e1</em></code></caption>
+          <tbody>
+            <tr>
+              <td><var>temporary issuer</var> mappings</td>
+              <td>
+                <table class="hash-related">
+                  <thead><tr>
+                    <th><var>original identifier</var></th>
+                    <th><var>temporary identifier</var></th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td><code><em>e1</em></code></td><td><code><em>b0</em></code></td></tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td><var>hash</var></td>
+              <td>`2c0b377baf86f6c18fed4b0df6741290066e73c932861749b172d1e5560f5045`</td>
+            </tr>
+          </tbody>
+        </table>
+      </aside>
+    </section>
+
+    <section id="hash-nd-quads-algorithm">
+      <h3>Algorithm</h3>
+
+      <p>The inputs to this algorithm are the <a>canonicalization state</a>,
+        the <var>identifier</var> for the <a>blank node</a> to
+        recursively hash quads for, and path identifier <var>issuer</var> which is
+        an <a>identifier issuer</a> that issues temporary
+        <a>blank node identifier</a>s. The output from this algorithm
+        will be a <a>hash</a> and the <a>identifier issuer</a> used
+        to help generate it.</p>
+      <details>
+        <summary>Logging</summary>
+        <p>Log the inputs to the algorithm.</p>
+        <pre class="logging yaml nohighlight" data-transform="updateExample">
+          <!--
+            # Inputs for the Hash N-Degree Quads algorithm for double circle example
+            hndq:
+              log point: Hash N-Degree Quads function (4.8.3).
+              identifier: e0
+              issuer: {e0: b0}
+              ####...####
+          -->
+        </pre>
+      </details>
+
+      <ol id="hndq">
+        <li id="hndq.1">Create a new <a>map</a> <var>H<sub>n</sub></var>
+          for relating hashes to related <a>blank nodes</a>.</li>
+        <li id="hndq.2">Get a reference, <var>quads</var>, to the list of <a>quads</a>
+          from the [= map/entry | map entry =]
+          for <var>identifier</var>
+          in the <a>blank node to quads map</a>.
+          <details>
+            <summary>Explanation</summary>
+            <p><var>quads</var> is the <a>mention set</a> of <var>identifier</var>.</p>
+          </details>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the quads from the <a>mention set</a> of <var>identifier</var>.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Inputs for the Hash N-Degree Quads algorithm for double circle example
+                hndq:
+                  identifier: e0
+                  log point: Hash N-Degree Quads function (4.8.3).
+                  issuer: {e0: b0}
+                  hndq.2:
+                    log point: Quads for identifier (4.8.3 (2)).
+                    quads:
+                    - _:e0 <http://example.org/vocab#next> _:e1 .
+                    - _:e0 <http://example.org/vocab#prev> _:e1 .
+                    - _:e1 <http://example.org/vocab#next> _:e0 .
+                    - _:e1 <http://example.org/vocab#prev> _:e0 .
+                  ####...####
+              -->
+            </pre>
+          </details>
+        </li>
+        <li id="hndq.3">For each <var>quad</var> in <var>quads</var>:
+          <details>
+            <summary>Explanation</summary>
+            <p>This loop calculates the related hash <var>H<sub>n</sub></var>
+              for other blank nodes within the <a>mention set</a> of <var>identifier</var>.</p>
+          </details>
+          <ol>
+            <li id="hndq.3.1">For each <var>component</var> in <var>quad</var>, where <var>component</var>
+              is the <a>subject</a>, <a>object</a>, or
+              <a>graph name</a>, and it is a
+              <a>blank node</a> that is not identified by
+              <var>identifier</var>:
+              <ol>
+                <li id="hndq.3.1.1">Set <var>hash</var> to the result of the
+                  <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>,
+                  passing the <a>blank node identifier</a> for
+                  <var>component</var> as <var>related</var>, <var>quad</var>,
+                  <var>issuer</var>, and
+                  <var>position</var> as either <code>s</code>, <code>o</code>, or
+                  <code>g</code> based on whether <var>component</var> is a
+                  <a>subject</a>, <a>object</a>,
+                  <a>graph name</a>, respectively.</li>
+                <li id="hndq.3.1.2">Add a mapping of <var>hash</var> to the
+                  <a>blank node identifier</a> for <var>component</var>
+                  to <var>H<sub>n</sub></var>, adding an entry
+                  as necessary.</li>
+              </ol>
+            </li>
+          </ol>
+          <details>
+            <summary>Logging</summary>
+            <p>Include the logs for each iteration of the
+              <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>
+              and the resulting <var>H<sub>n</sub></var>.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Step 3 of Hash N-Degree Quads using double circle example
+                hndq:
+                  identifier: e0
+                  log point: Hash N-Degree Quads function (4.8.3).
+                  issuer: {e0: b0}
+                  ####...####
+                hndq.3:
+                  log point: Hash N-Degree Quads function (4.8.3 (3)).
+                  with:
+                    - quad: _:e0 <http://example.org/vocab#next> _:e1 .
+                      hndq.3.1:
+                        log point: Hash related bnode component (4.8.3 (3.1))
+                        with:
+                          - position: o
+                            related: e1
+                            h1dq:
+                              log point: Hash First Degree Quads function (4.6.3).
+                              nquads:
+                                - _:z <http://example.org/vocab#next> _:a .
+                                - _:z <http://example.org/vocab#prev> _:a .
+                                - _:a <http://example.org/vocab#next> _:z .
+                                - _:a <http://example.org/vocab#prev> _:z .
+                              hash: 60dc8fc7b5481014b6ea38efb05455676d1e93e19b99119ab294941dacc16b3b
+                            input: "o<http://example.org/vocab#next>60dc8fc7b5481014b6ea38efb05455676d1e93e19b99119ab294941dacc16b3b"
+                            hash: 20bb08971220a5382a9a06ba2977c5fb859e63192e0b2015a378af89e453f25e
+                    - quad: _:e0 <http://example.org/vocab#prev> _:e1 .
+                      ####...####
+                  Hash to bnodes:
+                      20bb08971220a5382a9a06ba2977c5fb859e63192e0b2015a378af89e453f25e:
+                        - e1
+                      1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d:
+                        - e1
+                      56d0774755aaf8d9cf4da8af3728e5589f94e5cd7d9aee86f0c5a7bc1d71c7ca:
+                        - e1
+                      2a5dd448b9467a08479008a5350829441868b7f913343cd500fe8619e047cff4:
+                        - e1
+                ####...####
+              -->
+            </pre>
+          </details>
+        </li>
+        <li id="hndq.4">Create an empty string, <var>data to hash</var>.</li>
+        <li id="hndq.5">For each <var>related hash</var> to <var>blank node list</var> mapping in
+          <var>H<sub>n</sub></var>, <a>code point ordered</a>
+          by <var>related hash</var>:
+          <details>
+            <summary>Explanation</summary>
+            <p>This loop explores the <a>gossip paths</a> for each
+              related blank node sharing a common hash to <var>identifier</var>
+              finding the shortest such path (<var>chosen path</var>).
+              This determines how canonical identifiers for
+              otherwise commonly hashed blank nodes are chosen.
+            </p>
+            <p>
+              Each path is represented by the concatenation of the
+              identifiers for each related blank node
+              — either the issued identifier,
+              or a temporary identifier created using a copy of <var>issuer</var>.
+              Those for which temporary identifiers were issued are later
+              recursed over using this algorithm.
+            </p>
+          </details>
+          <details>
+            <summary>Logging</summary>
+            <p>Log the value of <var>related hash</var>
+              and state of <var>data to hash</var>.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Log related hash and data to hash in each iteration of step 5 for double circle example.
+                hndq:
+                  log point: Hash N-Degree Quads function (4.8.3).
+                  identifier: e0
+                  issuer: {e0: b0}
+                  ####...####
+                  hndq.5:
+                    log point: Hash N-Degree Quads function (4.8.3 (5)), entering loop.
+                    with:
+                    - related_hash: 1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d
+                      data_to_hash: ""
+                      ####...####
+              -->
+            </pre>
+          </details>
+          <ol>
+            <li id="hndq.5.1">Append the <var>related hash</var> to the <var>data to hash</var>.</li>
+            <li id="hndq.5.2">Create a <a>string</a> <var>chosen path</var>.</li>
+            <li id="hndq.5.3">Create an unset <var>chosen issuer</var> variable.</li>
+            <li id="hndq.5.4">For each <a href="https://en.wikipedia.org/wiki/Permutation">permutation</a> <var>p</var> of <var>blank node list</var>:
+              <details>
+                <summary>Logging</summary>
+                <p>Log each <a href="https://en.wikipedia.org/wiki/Permutation">permutation</a> <var>p</var>.</p>
+                <pre class="logging yaml nohighlight" data-transform="updateExample">
+                  <!--
+                    # Log each permutation of step 5.4 using double circle example.
+                    hndq:
+                      log point: Hash N-Degree Quads function (4.8.3).
+                      identifier: e0
+                      issuer: {e0: b0}
+                      ####...####
+                      hndq.5:
+                        log point: Hash N-Degree Quads function (4.8.3 (5)), entering loop.
+                        with:
+                        - related_hash: 1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d
+                          data_to_hash: ""
+                          hndq.5.4:
+                            log point: Hash N-Degree Quads function (4.8.3 (5.4)), entering loop.
+                            with:
+                            - perm: [ "e1"]
+                              ####...####
+                  -->
+                </pre>
+              </details>
+              <ol>
+                <li id="hndq.5.4.1">Create a copy of <var>issuer</var>, <var>issuer copy</var>.</li>
+                <li id="hndq.5.4.2">Create a <a>string</a> <var>path</var>.</li>
+                <li id="hndq.5.4.3">Create a <var>recursion list</var>, to store
+                  <a>blank node identifiers</a> that must be
+                  recursively processed by this algorithm.</li>
+                <li id="hndq.5.4.4">For each <var>related</var> in <var>p</var>:
+                  <ol>
+                    <li id="hndq.5.4.4.1">If a canonical identifier has been issued for
+                      <var>related</var> by <a>canonical issuer</a>, append the string <code>_:</code>, followed by
+                      the canonical identifier for <var>related</var>, to <var>path</var>.
+                      <details><summary>Explanation</summary>
+                        <p>A canonical identifier may have been generated before calling this algorithm,
+                            if it was issued from an earlier call to <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a>.
+                            There is no reason to recurse and apply the algorithm to any related blank node that has already been assigned a canonical identifier.
+                             Furthermore, using the canonical identifier also further distinguishes it from any temporary identifier, allowing for even greater efficiency in finding the chosen path.</p>
+                      </details>
+                    </li>
+                    <li id="hndq.5.4.4.2">Otherwise:
+                      <ol>
+                        <li id="hndq.5.4.4.2.1">If <i>issuer copy</i> has not issued
+                          an identifier for <var>related</var>, append
+                          <var>related</var> to <var>recursion list</var>.
+                          <details>
+                            <summary>Explanation</summary>
+                            <p>Temporarily labeled nodes have identifiers recorded
+                              in <var>issuer copy</var>,
+                              which is later used to recursively call this algorithm,
+                              so that eventually all nodes are given canonical identifiers.</p>
+                          </details>
+                        </li>
+                        <li id="hndq.5.4.4.2.2">Use the
+                          <a href="#issue-identifier">Issue Identifier algorithm</a>,
+                          passing <var>issuer copy</var> and the <var>related</var>, and
+                          append the string <code>_:</code>, followed by the result, to <var>path</var>.</li>
+                      </ol>
+                    </li>
+                    <li id="hndq.5.4.4.3">If <var>chosen path</var> is not empty and the length
+                      of <var>path</var> is greater than or equal to the length
+                      of <var>chosen path</var> and <var>path</var> is
+                      greater than <var>chosen path</var> when
+                      considering <a>code point order</a>,
+                      then skip to the next
+                      <a href="https://en.wikipedia.org/wiki/Permutation">permutation</a> <var>p</var>.
+                      <details>
+                        <summary>Explanation</summary>
+                        <p>If <var>path</var> is already longer than
+                          the prospective <var>chosen path</var>,
+                          we can terminate this iteration early.</p>
+                      </details>
+                    </li>
+                  </ol>
+                  <details>
+                    <summary>Explanation</summary>
+                    <p><var>path</var> is used to generate a hash at a later step; in this respect, it is similar to
+                      the <a href="#hash-1d-quads">Hash First Degree Quads algorithm</a> which
+                      uses the serialization of <a>quads</a> in <a>nquads</a> for hashing. For the sake of consistency, the
+                      <a>nquad</a> representation of blank node identifiers is used in these steps, hence the
+                      usage of the <code>_:</code> string.</p>
+                  </details>
+                  <details>
+                    <summary>Logging</summary>
+                    <p>Log <var>related</var> and <var>path</var>.</p>
+                    <pre class="logging yaml nohighlight" data-transform="updateExample">
+                      <!--
+                        # Log related and path of step 5.4.4 using double circle example.
+                        hndq:
+                          log point: Hash N-Degree Quads function (4.8.3).
+                          identifier: e0
+                          issuer: {e0: b0}
+                          ####...####
+                          hndq.5:
+                            log point: Hash N-Degree Quads function (4.8.3 (5)), entering loop.
+                            with:
+                            - related_hash: 1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d
+                              data_to_hash: ""
+                              hndq.5.4:
+                                log point: Hash N-Degree Quads function (4.8.3 (5.4)), entering loop.
+                                with:
+                                - perm: [ "e1"]
+                                  hndq.5.4.4:
+                                    log point: Hash N-Degree Quads function (4.8.3 (5.4.4)), entering loop.
+                                    with:
+                                      - related: e1
+                                        path: ""
+                                  ####...####
+                      -->
+                    </pre>
+                  </details>
+                </li>
+                <li id="hndq.5.4.5">For each <var>related</var> in <var>recursion list</var>:
+                  <details>
+                    <summary>Explanation</summary>
+                    <p>The prospective <var>path</var> is extended with
+                      the hash resulting from recursively calling this algorithm
+                      on each related blank node issued a temporary identifier.</p>
+                  </details>
+                  <details>
+                    <summary>Logging</summary>
+                    <p>Log <var>recursion list</var> and <var>path</var>.</p>
+                    <pre class="logging yaml nohighlight" data-transform="updateExample">
+                      <!--
+                        # Log related and path of step 5.4.5 using double circle example.
+                        hndq:
+                          log point: Hash N-Degree Quads function (4.8.3).
+                          identifier: e0
+                          issuer: {e0: b0}
+                          ####...####
+                          hndq.5:
+                            log point: Hash N-Degree Quads function (4.8.3 (5)), entering loop.
+                            with:
+                            - related_hash: 1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d
+                              data_to_hash: ""
+                              hndq.5.4:
+                                log point: Hash N-Degree Quads function (4.8.3 (5.4)), entering loop.
+                                with:
+                                - perm: [ "e1"]
+                                  ####...####
+                                  hndq.5.4.5:
+                                    log point: Hash N-Degree Quads function (4.8.3 (5.4.5)), before possible recursion.
+                                    recursion list: [ "e1"]
+                                    path: "_:b1"
+                                  ####...####
+                      -->
+                    </pre>
+                  </details>
+                  <ol>
+                    <li id="hndq.5.4.5.1">Set <var>result</var> to the result of recursively executing
+                      the <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>,
+                      passing the <a>canonicalization state</a>,
+                      <var>related</var> for <var>identifier</var>, and
+                      <var>issuer copy</var> for <var>path identifier issuer</var>.
+                      <details>
+                        <summary>Logging</summary>
+                        <p>Log <var>related</var> and
+                          include logs for each recursive call to <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>.</p>
+                        <pre class="logging yaml nohighlight" data-transform="updateExample">
+                          <!--
+                          # Log related and path of step 5.4.5.1 using double circle example.
+                          hndq:
+                            log point: Hash N-Degree Quads function (4.8.3).
+                            identifier: e0
+                            issuer: {e0: b0}
+                            ####...####
+                            hndq.5:
+                              log point: Hash N-Degree Quads function (4.8.3 (5)), entering loop.
+                              with:
+                              - related_hash: 1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d
+                                data_to_hash: ""
+                                hndq.5.4:
+                                  log point: Hash N-Degree Quads function (4.8.3 (5.4)), entering loop.
+                                  with:
+                                  - perm: [ "e1"]
+                                    ####...####
+                                    hndq.5.4.5:
+                                      log point: Hash N-Degree Quads function (4.8.3 (5.4.5)), before possible recursion.
+                                      recursion list: [ "e1"]
+                                      path: "_:b1"
+                                      with:
+                                        - related: e1
+                                          hndq:
+                                            ####...####
+                          -->
+                        </pre>
+                      </details>
+                    </li>
+                    <li id="hndq.5.4.5.2">Use the
+                      <a href="#issue-identifier">Issue Identifier algorithm</a>,
+                      passing <var>issuer copy</var> and <var>related</var>; append the string <code>_:</code>, followed by
+                      the result, to <var>path</var>.</li>
+                    <li id="hndq.5.4.5.3">Append <code>&lt;</code>, the <a>hash</a> in
+                      <var>result</var>, and <code>&gt;</code> to <var>path</var>.</li>
+                    <li id="hndq.5.4.5.4">Set <var>issuer copy</var> to the
+                      <a>identifier issuer</a> in result.</li>
+                    <li id="hndq.5.4.5.5">If <var>chosen path</var> is not empty and the length
+                      of <var>path</var> is greater than or equal to the length
+                      of <var>chosen path</var> and <var>path</var> is
+                      greater than <var>chosen path</var> when considering <a>code point order</a>,
+                      then skip to the next <var>p</var>.
+                      <details>
+                        <summary>Explanation</summary>
+                        <p>If <var>path</var> is already longer than
+                          the prospective <var>chosen path</var>,
+                          we can terminate this iteration early.</p>
+                      </details>
+                    </li>
+                  </ol>
+                </li>
+                <li id="hndq.5.4.6">If <var>chosen path</var> is empty or <var>path</var> is
+                  less than <var>chosen path</var> when considering <a>code point order</a>,
+                  set <var>chosen path</var> to <var>path</var> and <var>chosen issuer</var>
+                  to <var>issuer copy</var>.
+                </li>
+              </ol>
+            </li>
+            <li id="hndq.5.5">Append <var>chosen path</var> to <var>data to hash</var>.
+              <details>
+                <summary>Logging</summary>
+                <p>Log <var>chosen path</var> and <var>data to hash</var>.</p>
+                <pre class="logging yaml nohighlight" data-transform="updateExample">
+                  <!--
+                    # Log chosen path and data to hash logs of step 5.5 using double circle example.
+                    hndq:
+                      log point: Hash N-Degree Quads function (4.8.3).
+                      identifier: e0
+                      issuer: {e0: b0}
+                      ####...####
+                      hndq.5:
+                        log point: Hash N-Degree Quads function (4.8.3 (5)), entering loop.
+                        with:
+                        - related_hash: 1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d
+                          data_to_hash: ""
+                          ####...####
+                          hndq.5.5:
+                            log point: Hash N-Degree Quads function (4.8.3 (5.5). End of current loop with Hn hashes.
+                            chosen path: "_:b1_:b1<1ae899f76e760eb7caf6656437aaef845b50887aff7baeb3531add85ec02ed35>"
+                            data to hash: "1e4e55ba02b8b0b527c32e2343fbcfee2e2bd9c1972c67cc01f85fabde7bc42d_:b1_:b1<1ae899f76e760eb7caf6656437aaef845b50887aff7baeb3531add85ec02ed35>"
+                          ####...####
+                  -->
+                </pre>
+              </details>
+            </li>
+            <li id="hndq.5.6">Replace <var>issuer</var>, by reference, with<var>chosen issuer</var>.</li>
+          </ol>
+        </li>
+        <li id="hndq.6">Return <var>issuer</var> and the <a>hash</a> that results from
+          passing <var>data to hash</var> through the
+          <a>hash algorithm</a>.
+          <details>
+            <summary>Logging</summary>
+            <p>Log <var>issuer</var> and results from passing <var>data to hash</var>
+              through the <a>hash algorithm</a>.</p>
+            <pre class="logging yaml nohighlight" data-transform="updateExample">
+              <!--
+                # Log issuer and resulting hash of step 6 using double circle example.
+                hndq:
+                  log point: Hash N-Degree Quads function (4.8.3).
+                  identifier: e0
+                  issuer: {e0: b0}
+                  ####...####
+                  hndq.6:
+                    log point: Leaving Hash N-Degree Quads function (4.8.3).
+                    hash: e332b4b59e1c4794ee72a4df0f63723326ffb6d6a5c0d0cb4d2dd8d8d5ebf5a4
+                    issuer: {e0: b0, e1: b1}
+              -->
+            </pre>
+          </details>
+        </li>
+      </ol>
+    </section>
+  </section>
+</section>
+
+<section id="serialization">
+  <h2>Serialization</h2>
+
+  <p>This section describes the process of creating a serialized [[N-Quads]] representation
+    of a <a>canonicalized dataset</a>.</p>
+
+  <p>The <dfn>serialized canonical form</dfn> of a <a>canonicalized dataset</a>
+    is an N-Quads document [[N-QUADS]]
+    created by representing each <a>quad</a> from the <a>canonicalized dataset</a>
+    in <a>canonical n-quads form</a>,
+    sorting them into <a>code point order</a>,
+    and concatenating them. (Note that each canonical N-Quads statement ends with a new line,
+    so no additional separators are needed in the concatenation.)
+    The resulting document has a media type of `application/n-quads`,
+    as described in <a data-cite="N-QUADS#sec-mediaReg">C. N-Quads Internet Media Type, File Extension and Macintosh File Type</a>
+    of [[N-QUADS]].</p>
+
+  <p>When serializing quads in <a>canonical n-quads form</a>,
+    components which are <a>blank nodes</a> MUST be serialized using the
+    canonical label associated with each <a>blank node</a>
+    from the <a>issued identifiers map</a> component of the
+    <a>canonicalized dataset</a>.</p>
+
+  <aside id="ex-ser-unique-hashes"
+        class="example"
+        title="Canonical N-Quads representation of Unique Hashes">
+
+    <p>This example illustrates the result of serializing
+      the <a>canonicalized dataset</a> described in <a href="#ex-ca-unique-hashes"></a>.</p>
+
+    <pre id="ex-ser-unique-hashes-result"
+         class="nohighlight"
+         data-transform="updateExample"
+         title="Canonical N-Quads representation of Unique Hashes">
+    <!--
+      <http://example.com/p> <http://example.com/q> _:c14n0 .
+      <http://example.com/p> <http://example.com/r> _:c14n1 .
+      _:c14n0 <http://example.com/s> <http://example.com/u> .
+      _:c14n1 <http://example.com/t> <http://example.com/u> .
+
+    -->
+    </pre>
+  </aside>
+</section>
+
+<section id="privacy-considerations" class="informative">
+  <h2>Privacy Considerations</h2>
+
+    <p>The nature of the canonicalization algorithm inherently correlates its output,
+      i.e., the canonical labels and the sorted order of quads, with the input dataset.
+      This could pose issues, particularly when dealing with datasets containing personal information.
+      For example, even if certain information is removed from the <a>canonicalized dataset</a>
+      for some privacy-respecting reason, there remains the possibility that a third party
+      could infer the omitted data by analyzing the canonicalized dataset.
+      If it is necessary to decouple the canonicalization algorithm's input and output,
+      some suitable post-processing methods for the output of the canonicalization should be performed.
+      This specification has been designed to help make additional processing easier, but
+      other specifications that build on top of this one are responsible for providing any
+      specific details.
+      See <a data-cite="VC-DATA-INTEGRITY#selective-disclosure">Selective Disclosure</a>
+      in [[[VC-DATA-INTEGRITY]]] [[VC-DATA-INTEGRITY]] for more details about such
+      post-processing methods.
+    </p>
+</section>
+
+<section id="security-considerations" class="informative">
+  <h2>Security Considerations</h2>
+
+  <section id="dataset-poisoning" class="informative">
+    <h3>Dataset Poisoning</h3>
+
+    <p>The canonicalization algorithm examines every difference in the
+      information connected to blank nodes in order to ensure that each will
+      properly receive its own canonical identifier. This process can be
+      exploited by attackers to construct datasets which are known to take
+      large amounts of computing time to canonicalize, but that do not express
+      useful information or express it using unnecessary complexity.
+      Implementers of the algorithm are expected to add mitigations that will,
+      by default, abort canonicalizing problematic inputs.
+    </p>
+    <p>Suggested mitigations include, but are not limited to:</p>
+    <ul>
+      <li>providing a configurable timeout with a default value applicable to
+        an implementation's common use</li>
+      <li>providing a configurable limit on the number of iterations of steps
+        performed in the algorithm, particularly recursive steps
+        and permutations of long lists</li>
+    </ul>
+
+    <p>Additionally, software that uses implementations of the algorithm can
+      employ best-practice schema validation to reject data that does not meet
+      application requirements, thereby preventing useless poison datasets from
+      being processed. However, such mitigations are application specific and
+      not directly applicable to implementers of the canonicalization algorithm
+      itself.
+    </p>
+  </section>
+
+  <section id="insecure-hash-algorithms" class="informative">
+    <h3>Insecure Hash Algorithms</h3>
+
+    <p>It is possible that the default <a>hash algorithm</a> used by RDFC-1.0 might become
+      insecure at some point in the future. To mitigate this, this algorithm
+      and implementations of it can be parameterized to use a different
+      hash function, without the need to make any changes to the
+      canonicalization algorithm itself.
+      However, using a different hash algorithm will generally lead to different results;
+      applications making use of this specification should carefully weigh the advantages
+      and disadvantages of using an alternative hash function.
+    </p>
+
+    <p class="note">The possible implications of the default hash algorithm
+      becoming insecure are mitigated by that fact that no internal hash
+      values are revealed, and the canonicalization algorithm is designed to cope
+      with first-degree hash collisions.</p>
+  </section>
+
+</section>
+
+<section id="use-cases" class="informative">
+  <h2>Use Cases</h2>
+  <p>The use cases that have driven the development of the RDF Dataset Canonicalization algorithm are documented in a separate document. It includes further background and explanations for the design decisions taken [[RCH-EXPLAINER]].</p>
+</section>
+
+<section id="examples" class="informative">
+  <h2>Examples</h2>
+
+  <section id="duplicate-paths-ex">
+    <h3>Duplicate Paths</h3>
+
+    <p>This example illustrates a more complicated example where the same paths
+      through blank nodes are duplicated in a graph, but use different
+      <a>blank node identifiers</a>.</p>
+
+    <figure id="fig-duplicate-paths" style="text-align:center">
+      <!-- Source for this file is at https://docs.google.com/drawings/d/1QOiQWw2RgX4aqRi82NcGQsnQQApPcfo0394-VinBFNA -->
+      <object data="duplicate-paths.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-duplicate-paths-alt">
+        <p id="fig-duplicate-paths-alt">
+          The image represents the graph described in
+          <a href="#ex-duplicate-paths-input">
+            the following code block
+          </a>.</p>
+      </object>
+      <figcaption>An illustration of a graph with duplicated paths.<br/>
+        Image available in
+        <a href="duplicate-paths.svg" title="SVG image of duplicated paths">
+          <abbr title="Scalable Vector Graphics">SVG</abbr>
+        </a>.</figcaption>
+    </figure>
+
+    <pre id="ex-duplicate-paths-input"
+         data-transform="updateExample"
+         title="Graph with duplicated paths">
+      <!--
+      _:e0 :p1 _:e1 .
+      _:e1 :p2 "Foo" .
+      _:e2 :p1 _:e3 .
+      _:e3 :p2 "Foo" .
+      -->
+    </pre>
+
+    <p>The following is a summary of the more detailed execution log
+      found <a href="duplicate-paths.yml">here</a>.</p>
+
+    <aside id="ex-duplicate-paths"
+          class="example"
+          title="Duplicate Paths">
+
+      <p><a href="#ca.2">Step 2</a> of the <a href="#canon-algo-algo">Canonicalization Algorithm</a>
+        is called four times, with each blank node
+        (<code><em>e0</em></code>, <code><em>e1</em></code>, <code><em>e2</em></code>, and <code><em>e3</em></code>)
+        to populate <a>blank node to quads map</a>:</p>
+
+      <table id="ex-duplicate-paths-quads-map"
+             class="hash-related numbered">
+        <caption>Blank node to quads map for duplicate paths</caption>
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>Q</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code><em>e0</em></code></td>
+            <td>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;.</code><br>
+            </td>
+          </tr>
+          <tr>
+            <td><code><em>e1</em></code></td>
+            <td>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;.</code><br>
+              <code><em>_:e1</em>&nbsp;:p2&nbsp;"Foo"&nbsp;.</code><br>
+            </td>
+          </tr>
+          <tr>
+            <td><code><em>e2</em></code></td>
+            <td>
+              <code><em>_:e2</em>&nbsp;:p1&nbsp;<em>_:e3</em>&nbsp;.</code><br>
+            </td>
+          </tr>
+          <tr>
+            <td><code><em>e3</em></code></td>
+            <td>
+              <code><em>_:e2</em>&nbsp;:p1&nbsp;<em>_:e3</em>&nbsp;.</code><br>
+              <code><em>_:e3</em>&nbsp;:p2&nbsp;"Foo"&nbsp;.</code><br>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#ca.3">Step 3</a> generates the first-degree
+        hash for each blank node.</p>
+
+      <p>For <code><em>e0</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquad <code>_:a&nbsp;:p1&nbsp;_:z&nbsp;.</code> to calculate the hash
+        `24da9a4406b4e66dffa10ad3d4d6dddc388fbf193bb124e865158ef419893957`.</p>
+
+      <p>For <code><em>e1</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquads <code>_:z&nbsp;:p1&nbsp;_:a&nbsp;.</code> and <code>_:a&nbsp;:p2&nbsp;"Foo"&nbsp;.</code>
+        to calculate the hash
+        `a994e40b576809985bc0f389308cd9d552fd7c89d028c163848a6b2d33a8583a`.</p>
+
+      <p>For <code><em>e2</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquad <code>_:a&nbsp;:p1&nbsp;_:z&nbsp;.</code>
+        to calculate the hash
+        `24da9a4406b4e66dffa10ad3d4d6dddc388fbf193bb124e865158ef419893957`.</p>
+
+      <p>For <code><em>e3</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquads <code>_:z&nbsp;:p1&nbsp;_:a&nbsp;.</code> and <code>_:a&nbsp;:p2&nbsp;"Foo"&nbsp;.</code>
+        to calculate the hash
+        `a994e40b576809985bc0f389308cd9d552fd7c89d028c163848a6b2d33a8583a`.</p>
+
+      <table id="ex-duplicate-paths-ca.3"
+             class="hash-related numbered">
+        <caption>Hash to blank nodes map shared hashes</caption>
+        <thead><tr>
+          <th><var>hash</var></th>
+          <th><var>blank node(s)</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>`24da9a4406b4e66dffa10ad3d4d6dddc388fbf193bb124e865158ef419893957`</td>
+            <td><code><em>e0</em></code> and <code><em>e2</em></code></td>
+          </tr>
+          <tr>
+            <td>`a994e40b576809985bc0f389308cd9d552fd7c89d028c163848a6b2d33a8583a`</td>
+            <td><code><em>e1</em></code> and <code><em>e3</em></code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#ca.4">Step 4</a> would create canonical identifiers for each
+        blank node which has a unique hash, but no blank node has a unique hash.</p>
+
+      <p><a href="#ca.5">Step 5</a> is run on <code><em>e0</em></code>, <code><em>e1</em></code>, <code><em>e2</em></code>, and <code><em>e3</em></code>, separately,
+        which share hash values.
+        each use separate instances of a <var>temporary issuer</var>,
+        to create the <var>hash path list</var>
+        composed of the hash result
+        and temporary identifier mappings from
+        <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a>
+        for each of these blank nodes/</p>
+
+      <p>The <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a> is first
+        called for hash `24da9a4406b4e66dffa10ad3d4d6dddc388fbf193bb124e865158ef419893957`
+        and blank node <code><em>e0</em></code> related to
+        the nquad <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;.</code>.</p>
+
+      <table id="ex-duplicate-paths-hndq-e0-issuer">
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>temporary identifier</var></th>
+        </tr></thead>
+        <tbody>
+          <tr><td><code><em>e0</em></code></td><td><code><em>b0</em></code></td></tr>
+        </tbody>
+      </table>
+
+      <p><a href="#hndq.3">Step 3</a> calls the <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>
+        for each position in this quad:</p>
+
+      <table id="ex-duplicate-paths-table-related-hash-e0"
+             class="hash-related numbered">
+        <caption>Hash for <code><em>e2</em></code>  related to <code><em>e0</em></code></caption>
+        <thead><tr>
+          <th><var>related</var></th>
+          <th><var>quads</var></th>
+          <th><var>position</var></th>
+          <th><var>hash</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code><em>e3</em></code></td>
+            <td><code><em>z</em> :p1 <em>a</em> .</code><br/><code><em>a</em> :p2 "Foo" .</code></td>
+            <td>`o`</td>
+            <td>
+              <code><abbr title="a994e40b576809985bc0f389308cd9d552fd7c89d028c163848a6b2d33a8583a">a994e40b57...2d33a8583a</abbr></code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>which results in the following <var>H<sub>n</sub></var>:</p>
+
+      <table id="ex-duplicate-paths-bn-list-e0"
+             class="hash-related numbered">
+        <caption>Blank node list for hash</caption>
+        <thead><tr>
+          <th><var>related hash</var></th>
+          <th><var>blank node list</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code>a994e40b576809985bc0f389308cd9d552fd7c89d028c163848a6b2d33a8583a</code></td>
+            <td><code>[ <em>e3</em> ]</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#hndq.5">Step 5</a> iterates over each <var>related hash</var>
+        which is a key in <var>H<sub>n</sub></var>,
+        which can have one or more related blank nodes.</p>
+
+      <p>At <a href="#hndq.5.4.5">Step 5.4.5</a>, the |recursion list| is <code>[ <em>e3</em> ]</code>,
+        so the <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a> is
+        called recursively resulting in the following:</p>
+
+      <table id="ex-duplicate-paths-result-e2-e3"
+             class="hash-related numbered">
+        <caption>Result for <code><em>e3</em></code></caption>
+        <tbody>
+          <tr>
+            <td><var>temporary issuer</var> mappings</td>
+            <td>
+              <table class="hash-related">
+                <thead><tr>
+                  <th><var>original identifier</var></th>
+                  <th><var>temporary identifier</var></th>
+                </tr></thead>
+                <tbody>
+                  <tr><td><code><em>e2</em></code></td><td><code><em>b0</em></code></td></tr>
+                  <tr><td><code><em>e3</em></code></td><td><code><em>b1</em></code></td></tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td><var>hash</var></td>
+            <td>`c484f98e6cbf9e21f287433c8b1caa7f1486fd61d84ab220a494bf8184751b8c`</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>Back in <a href="#hndq.5.4.5.4">step 5.4.5.4</a>, the |path| and |issuer copy| are:
+        `_:b1_:b1&lt;c484f98e6cbf9e21f287433c8b1caa7f1486fd61d84ab220a494bf8184751b8c&gt;`
+        and <code>{<em>e2</em>: <em>b0</em>, <em>e3</em>: <em>b1</em>}</code>.</p>
+
+      <p>This results in the |chosen path| `_:b1_:b1&lt;c484f98e6cbf9e21f287433c8b1caa7f1486fd61d84ab220a494bf8184751b8c&gt;`
+        and |data to hash| `3d96946f27fc34a78e8d067135a1cb1b77083aebc4b2c6cbdc536f067242686c_:b1_:b1&lt;c484f98e6cbf9e21f287433c8b1caa7f1486fd61d84ab220a494bf8184751b8c&gt;`
+
+      <table id="ex-duplicate-paths-result-e0"
+             class="hash-related numbered">
+        <caption>Result for <code><em>e2</em></code></caption>
+        <tbody>
+          <tr>
+            <td><var>temporary issuer</var> mappings</td>
+            <td>
+              <table class="hash-related">
+                <thead><tr>
+                  <th><var>original identifier</var></th>
+                  <th><var>temporary identifier</var></th>
+                </tr></thead>
+                <tbody>
+                  <tr><td><code><em>e2</em></code></td><td><code><em>b0</em></code></td></tr>
+                  <tr><td><code><em>e3</em></code></td><td><code><em>b1</em></code></td></tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td><var>hash</var></td>
+            <td>`39d609fcd8236b74c70744f492cd2baaf0a55765b380ff9e0811ce23e2f409d7`</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>The <a href="#hash-nd-quads">Hash N-Degree Quads algorithm</a> is next
+        called for the same hash `24da9a4406b4e66dffa10ad3d4d6dddc388fbf193bb124e865158ef419893957`
+        but this time with blank node <code><em>e2</em></code> related to
+        the nquad <code><em>_:e2</em>&nbsp;:p1&nbsp;<em>_:e3</em>&nbsp;.</code>.</p>
+
+      <table id="ex-duplicate-paths-hndq-e2-issuer">
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>temporary identifier</var></th>
+        </tr></thead>
+        <tbody>
+          <tr><td><code><em>e2</em></code></td><td><code><em>b0</em></code></td></tr>
+        </tbody>
+      </table>
+
+      <p><a href="#hndq.3">Step 3</a> calls the <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>
+        for each position in this quad:</p>
+
+      <table id="ex-duplicate-paths-table-related-hash-e2"
+             class="hash-related numbered">
+        <caption>Hash for <code><em>e2</em></code> related to <code><em>e0</em></code></caption>
+        <thead><tr>
+          <th><var>related</var></th>
+          <th><var>quads</var></th>
+          <th><var>position</var></th>
+          <th><var>hash</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code><em>e3</em></code></td>
+            <td><code><em>z</em> :p1 <em>a</em> .</code><br/><code><em>a</em> :p2 "Foo" .</code></td>
+            <td>`o`</td>
+            <td>
+              <code><abbr title="3d96946f27fc34a78e8d067135a1cb1b77083aebc4b2c6cbdc536f067242686c">3d96946f27...184751b8c</abbr></code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>which results in the following <var>H<sub>n</sub></var>:</p>
+
+      <table id="ex-duplicate-paths-bn-list-e2"
+             class="hash-related numbered">
+        <caption>Blank node list for hash</caption>
+        <thead><tr>
+          <th><var>related hash</var></th>
+          <th><var>blank node list</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code>3d96946f27fc34a78e8d067135a1cb1b77083aebc4b2c6cbdc536f067242686c</code></td>
+            <td><code>[ <em>e3</em> ]</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#hndq.5">Step 5</a> iterates over each <var>related hash</var>
+        which is a key in <var>H<sub>n</sub></var>,
+        which can have one or more related blank nodes.</p>
+
+      <table id="ex-duplicate-paths-result-e2"
+             class="hash-related numbered">
+        <caption>Result for <code><em>e0</em></code></caption>
+        <tbody>
+          <tr>
+            <td><var>temporary issuer</var> mappings</td>
+            <td>
+              <table class="hash-related">
+                <thead><tr>
+                  <th><var>original identifier</var></th>
+                  <th><var>temporary identifier</var></th>
+                </tr></thead>
+                <tbody>
+                  <tr><td><code><em>e0</em></code></td><td><code><em>b0</em></code></td></tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td><var>hash</var></td>
+            <td>`fbc300de5afafd97a4b9ee1e72b57754dcdcb7ebb724789ac6a94a5b82a48d30`</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#ca.5.3">Step 5.3</a> back in the <a href="#canon-algo-algo">Canonicalization Algorithm</a>
+        creates canonical identifiers for the temporary identifiers just issued:</p>
+
+      <table id="ex-duplicate-paths-ca.5.3-e0-canon">
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>canonical identifier</var></th>
+        </tr></thead>
+        <tbody>
+          <tr><td><code><em>e0</em></code></td><td><code><em>c14n0</em></code></td></tr>
+          <tr><td><code><em>e1</em></code></td><td><code><em>c14n1</em></code></td></tr>
+          <tr><td><code><em>e2</em></code></td><td><code><em>c14n2</em></code></td></tr>
+          <tr><td><code><em>e3</em></code></td><td><code><em>c14n3</em></code></td></tr>
+        </tbody>
+      </table>
+
+      <p>Next, back in <a href="#ca.5.1">step 5.1</a>,
+        now using hash `a994e40b576809985bc0f389308cd9d552fd7c89d028c163848a6b2d33a8583a`,
+        canonical identifiers have already been created for the
+        two blank nodes <code><em>e1</em></code> and <code><em>e3</em></code>,
+        so no further processing is necessary.</p>
+
+      <p><a href="#ca.6">Step 6</a> ends with the issued identifiers map containing the following mappings:</p>
+
+      <table id="ex-duplicate-paths-ca.5.6">
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>canonical identifier</var></th>
+        </tr></thead>
+        <tbody>
+          <tr><td><code><em>e0</em></code></td><td><code><em>c14n0</em></code></td></tr>
+          <tr><td><code><em>e1</em></code></td><td><code><em>c14n1</em></code></td></tr>
+          <tr><td><code><em>e2</em></code></td><td><code><em>c14n2</em></code></td></tr>
+          <tr><td><code><em>e3</em></code></td><td><code><em>c14n3</em></code></td></tr>
+        </tbody>
+      </table>
+    </aside>
+  </section>
+
+  <section id="double-circle-ex">
+    <h3>Double Circle</h3>
+
+    <p>This example illustrates another complicated example of
+      nodes that are doubly connected in opposite directions.</p>
+
+    <figure id="fig-double-circle" style="text-align:center">
+      <!-- Source for this file is at https://docs.google.com/drawings/d/1slLhsjMSVGNJ0JKdVmknDS8TX1csUZs4dSdpWHh_j-8 -->
+      <object data="double-circle.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-double-circle-alt">
+        <p id="fig-double-circle-alt">
+          The image represents the graph described in
+          <a href="#ex-double-circle-input">
+            the following code block
+          </a>.</p>
+      </object>
+      <figcaption>An illustration of a graph back and forth links to nodes.<br/>
+        Image available in
+        <a href="double-circle.svg" title="SVG image of double circle">
+          <abbr title="Scalable Vector Graphics">SVG</abbr>
+        </a>.</figcaption>
+    </figure>
+
+    <pre id="ex-double-circle-input"
+         data-transform="updateExample"
+         title="Graph with a double circle">
+      <!--
+      _:e0 :next _:e1 .
+      _:e0 :prev _:e1 .
+      _:e1 :next _:e0 .
+      _:e1 :prev _:e0 .
+      -->
+    </pre>
+
+    <p>The example is not explored in detail, but the
+      execution log found <a href="double-circle.yml">here</a>
+      shows examples of more complicated
+      pathways through the algorithm</p>
+
+  </section>
+
+  <section id="dataset-bn-graph-ex">
+    <h3>Dataset with Blank Node Named Graph</h3>
+
+    <p>This example illustrates an example of a <a>dataset</a>,
+      where one graph is named using a <a>blank node</a>,
+      which is also the object of a triple in the <a>default graph</a>.</p>
+
+    <figure id="fig-dataset-bn-graph" style="text-align:center">
+      <!-- Source for this file is at https://docs.google.com/drawings/d/1g668zXf7ZgfByDeK6vW-uO6MvzpBCz7I0NtGd9xZao4 -->
+      <object data="dataset-bn-graph.svg" style="width: 75%" type="image/svg+xml" aria-describedby="fig-dataset-bn-graph-alt">
+        <p id="fig-dataset-bn-graph-alt">
+          The image represents the dataset described in
+          <a href="#ex-dataset-bn-graph-input">
+            the following code block
+          </a>.</p>
+      </object>
+      <figcaption>An illustration of a dataset containing a graph named with a blank node.<br/>
+        Image available in
+        <a href="dataset-bn-graph.svg" title="SVG image of dataset containg a graph named with a blank node">
+          <abbr title="Scalable Vector Graphics">SVG</abbr>
+        </a>.</figcaption>
+    </figure>
+
+    <pre id="ex-dataset-bn-graph-input"
+         data-transform="updateExample"
+         title="Graph with duplicated paths">
+      <!--
+      _:e0 :p1 _:e1 .
+      _:e1 :p2 "Foo" .
+      _:e1 :p3 _:g0 .
+      _:e0 :p1 _:e1 _:g0 .
+      _:e1 :p2 "Bar" _:g0 .
+      -->
+    </pre>
+
+    <p>The following is a summary of the more detailed execution log
+      found <a href="dataset-bn-graph.yml">here</a>.</p>
+
+    <aside id="ex-dataset-bn-graph"
+          class="example"
+          title="Dataset Blank Node Graph">
+
+      <p><a href="#ca.2">Step 2</a> of the <a href="#canon-algo-algo">Canonicalization Algorithm</a>
+        is called three times, with each blank node
+        (<code><em>e0</em></code>, <code><em>e1</em></code>, and <code><em>g0</em></code>)
+        to populate <a>blank node to quads map</a>:</p>
+
+      <table id="ex-dataset-bn-graph-quads-map"
+             class="hash-related numbered">
+        <caption>Blank node to quads map for dataset with blank node named graph</caption>
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>Q</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code><em>e0</em></code></td>
+            <td>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;.</code><br>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+            </td>
+          </tr>
+          <tr>
+            <td><code><em>e1</em></code></td>
+            <td>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;.</code><br>
+              <code><em>_:e1</em>&nbsp;:p2&nbsp;"Foo"&nbsp;.</code><br>
+              <code><em>_:e1</em>&nbsp;:p3&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+              <code><em>_:e1</em>&nbsp;:p2&nbsp;"Bar"&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+            </td>
+          </tr>
+          <tr>
+            <td><code><em>g0</em></code></td>
+            <td>
+              <code><em>_:e1</em>&nbsp;:p3&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+              <code><em>_:e0</em>&nbsp;:p1&nbsp;<em>_:e1</em>&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+              <code><em>_:e1</em>&nbsp;:p2&nbsp;"Bar"&nbsp;<em>_:g0</em>&nbsp;.</code><br>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#ca.3">Step 3</a> generates the first-degree
+        hash for each blank node.</p>
+
+      <p>For <code><em>e0</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquads <code>_:a&nbsp;:p1&nbsp;_:z&nbsp;.</code> and
+        <code>_:a&nbsp;:p1&nbsp;_:z&nbsp;_:z&nbsp;.</code>to calculate the hash
+        `39fa92e7a9ea0b32e3e08aedebc1cbbcd9ba9945a18f2594677598fcfb517345`.</p>
+
+      <p>For <code><em>e1</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquads <code>_:z&nbsp;:p1&nbsp;_:a&nbsp;.</code>,
+        <code>_:a&nbsp;:p2&nbsp;"Foo"&nbsp;.</code>,
+        <code>_:a&nbsp;:p3&nbsp;_:z&nbsp;.</code>,
+        <code>_:z&nbsp;:p1&nbsp;_:a&nbsp;_:z&nbsp;.</code>, and
+        <code>_:a&nbsp;:p2&nbsp;"Bar"&nbsp;_:z&nbsp;.</code>
+        to calculate the hash
+        `5274652aa97d22f9f2998d1837ffaf9ad820fb813574adc4a403f105021e48bf`.</p>
+
+      <p>For <code><em>g0</em></code>, the <a href="#h1dq">Hash First Degree Quads algorithm</a>
+        uses the nquads <code>_:z&nbsp;:p3&nbsp;_:a&nbsp;.</code>,
+        <code>_:z&nbsp;:p1&nbsp;_:z&nbsp;_:a&nbsp;.</code>, and
+        <code>_:z&nbsp;:p2&nbsp;"Bar"&nbsp;_:a&nbsp;.</code>
+        to calculate the hash
+        `efb0096125247801199082c6f213cda5377d8ddac20a83eaf6c7d88335c12bf4`.</p>
+
+      <table id="ex-dataset-bn-graph-ca.3"
+             class="hash-related numbered">
+        <caption>Hash to blank nodes map shared hashes</caption>
+        <thead><tr>
+          <th><var>hash</var></th>
+          <th><var>blank node(s)</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>`39fa92e7a9ea0b32e3e08aedebc1cbbcd9ba9945a18f2594677598fcfb517345`</td>
+            <td><code><em>e0</em></code></td>
+          </tr>
+          <tr>
+            <td>`5274652aa97d22f9f2998d1837ffaf9ad820fb813574adc4a403f105021e48bf`</td>
+            <td><code><em>e1</em></code></td>
+          </tr>
+          <tr>
+            <td>`efb0096125247801199082c6f213cda5377d8ddac20a83eaf6c7d88335c12bf4`</td>
+            <td><code><em>g0</em></code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#ca.4">Step 4</a> creates canonical identifiers for each
+        blank node which has a unique hash:</p>
+
+      <table id="ex-dataset-bn-graph-ca.4"
+             class="hash-related numbered">
+        <caption>Canonical identifiers for dataset with blank node named graph</caption>
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>canonical identifier</var></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><code><em>e0</em></code></td>
+            <td><code><em>c14n0</em></code></td>
+          </tr>
+          <tr>
+            <td><code><em>e1</em></code></td>
+            <td><code><em>c14n1</em></code></td>
+          </tr>
+          <tr>
+            <td><code><em>g0</em></code></td>
+            <td><code><em>c14n2</em></code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><a href="#ca.5">Step 5</a> has no effect,
+        as there are no remaining blank nodes without canonical identifiers.</p>
+
+      <p><a href="#ca.6">Step 6</a> ends with the canonical issuers containing the following mappings:</p>
+
+      <table id="ex-dataset-bn-graph-ca.5.6">
+        <thead><tr>
+          <th><var>blank node</var></th>
+          <th><var>canonical identifier</var></th>
+        </tr></thead>
+        <tbody>
+          <tr><td><code><em>e0</em></code></td><td><code><em>c14n0</em></code></td></tr>
+          <tr><td><code><em>e1</em></code></td><td><code><em>c14n1</em></code></td></tr>
+          <tr><td><code><em>g0</em></code></td><td><code><em>c14n2</em></code></td></tr>
+        </tbody>
+      </table>
+    </aside>
+  </section>
+</section>
+
+<section id="canonical-quads" class="appendix">
+  <h2>A Canonical form of N-Quads</h2>
+
+  <p>This section defines a canonical form of N-Quads which has
+    a completely specified layout.
+    The grammar for the language remains unchanged.</p>
+
+  <p>Canonical N-Quads updates and extends
+    <a data-cite="N-TRIPLES#canonical-ntriples">Canonical N-Triples</a> in [[N-TRIPLES]]
+    to include <code><a data-cite="N-QUADS#grammar-production-graphLabel">graphLabel</a></code>.</p>
+
+  <p>While the N-Quads syntax [[N-QUADS]] allows choices for the representation and layout of RDF data,
+    the canonical form of N-Quads provides a unique syntactic representation of any quad.
+    Each code point
+    can be represented by only one of
+    <code><a data-cite="N-QUADS#grammar-production-UCHAR">UCHAR</a></code>,
+    <code><a data-cite="N-QUADS#grammar-production-ECHAR">ECHAR</a></code>,
+    or unencoded character,
+    where the relevant production allows for a choice in representation.
+    Each quad is represented entirely on a single line with specified white space.</p>
+
+  <p>Canonical N-Quads has the following additional constraints on layout:</p>
+  <ul>
+    <li>White space MUST NOT be used except after
+      <code>subject</code>,
+      <code>predicate</code>,
+      <code>object</code>,
+      and <code>graphLabel</code>,
+      each of which MUST be a single space (code point <code class="codepoint">U+0020</code>).</li>
+    <li><a data-cite="RDF11-CONCEPTS#dfn-literal">Literals</a> with the
+      datatype <code>http://www.w3.org/2001/XMLSchema#string</code>
+      MUST NOT use the datatype IRI part of the <a data-cite="N-QUADS#grammar-production-literal">literal</a>,
+      and are represented using only <a data-cite="N-QUADS#grammar-production-STRING_LITERAL_QUOTE">STRING_LITERAL_QUOTE</a>.
+    </li>
+    <li><code><a data-cite="N-QUADS#grammar-production-HEX">HEX</a></code> MUST use only digits (<code>[0-9]</code>) and uppercase letters (<code>[A-F]</code>).</li>
+    <li>Within <a data-cite="N-QUADS#grammar-production-STRING_LITERAL_QUOTE">STRING_LITERAL_QUOTE</a>:
+      <ul>
+        <li>Characters
+          <code>BS</code> (backspace, code point <code class="codepoint">U+0008</code>),
+          <code>HT</code> (horizontal tab, code point <code class="codepoint">U+0009</code>),
+          <code>LF</code> (line feed, code point <code class="codepoint">U+000A</code>),
+          <code>FF</code> (form feed, code point <code class="codepoint">U+000C</code>),
+          <code>CR</code> (carriage return, code point <code class="codepoint">U+000D</code>),
+          <code>&quot;</code> (quotation mark, code point <code class="codepoint">U+0022</code>), and
+          <code>\</code> (backslash, code point <code class="codepoint">U+005C</code>)
+          MUST be encoded using <code><a data-cite="N-QUADS#grammar-production-ECHAR">ECHAR</a></code>.</li>
+        <li>Characters in the range from <code class="codepoint">U+0000</code> to <code class="codepoint">U+0007</code>,
+          <code>VT</code> (vertical tab, code point <code class="codepoint">U+000B</code>),
+          characters in the range from <code class="codepoint">U+000E</code> to <code class="codepoint">U+001F</code>,
+          <code>DEL</code> (delete, code point <code class="codepoint">U+007F</code>),
+          and characters not matching the <a data-cite="XML11#charsets">Char</a> production from [[XML11]]
+          MUST be represented by <code><a data-cite="N-QUADS#grammar-production-UCHAR">UCHAR</a></code>
+          using a lowercase <code>\u</code> with 4 <code><a data-cite="N-QUADS#grammar-production-HEX">HEX</a></code>es.</li>
+        <li>All characters not required to be represented by
+          <code><a data-cite="N-QUADS#grammar-production-ECHAR">ECHAR</a></code> or
+          <code><a data-cite="N-QUADS#grammar-production-UCHAR">UCHAR</a></code>
+          MUST be represented by their native [[UNICODE]] representation.</li>
+      </ul>
+     </li>
+    <li>The token <code><a data-cite="N-QUADS#grammar-production-EOL">EOL</a></code> MUST be a single <code>LF</code> (line feed, code point <code class="codepoint">U+000A</code>).</li>
+    <li>The final <code><a data-cite="N-QUADS#grammar-production-EOL">EOL</a></code> MUST be provided.</li>
+  </ul>
+</section>
+
+<section id="urdna2015" class="appendix informative">
+  <h2>URDNA2015</h2>
+
+  <p>[[[CCG-RDC-FINAL]]] [[CCG-RDC-FINAL]] describes
+    "Universal RDF Dataset Normalization Algorithm 2015"
+    (<abbr title="Universal RDF Dataset Normalization Algorithm 2015"><dfn class="export">URDNA2015</dfn></abbr>),
+    essentially the same algorithm
+    as <a>RDFC-1.0</a>, and generally implementations implementing URDNA2015
+    should be compatible with this specification.
+    The minor change is in the <a>canonical n-quads form</a> where
+    some control characters were previously represented without escaping.
+    The version of the algorithm defined in <a href="#canonical-quads" class="sectionRef"></a>
+    clarifies the representation of <a data-cite="RDF11-CONCEPTS#dfn-simple-literal">simple literals</a> and the characters
+    within <a data-cite="N-QUADS#grammar-production-STRING_LITERAL_QUOTE">STRING_LITERAL_QUOTE</a>
+    that are encoded using <code><a data-cite="N-QUADS#grammar-production-ECHAR">ECHAR</a></code>.</p>
+</section>
+
+<section id="urgna2012" class="appendix informative algorithm">
+  <h2>URGNA2012</h2>
+  <p>A previous version of this algorithm has light deployment. For purposes of identification,
+    the algorithm is called the
+    "Universal RDF Graph Canonicalization Algorithm 2012"
+    (<abbr title="Universal RDF Graph Canonicalization Algorithm 2012"><dfn class="export">URGNA2012</dfn></abbr>),
+    and differs from the stated algorithm in the following ways:</p>
+  <ul>
+    <li>In <a href="#hash-1d-quads" class="sectionRef"></a>, if any blank node was used in the <a>graph name</a>
+      position in the <a>quad</a>, then the value was serialized using
+      the special <a>blank node identifier</a>, <code>g</code>, instead of <code>z</code>.</li>
+    <li>In <a href="#hash-related-blank-node" class="sectionRef"></a>, value of the <a>predicate</a>
+      was not delimited by <code>&lt;</code> and <code>&gt;</code>; there
+      were no delimiters.</li>
+    <li>In <a href="#hash-nd-quads" class="sectionRef"></a>, the <var>position</var> parameter passed to
+      the <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>
+      was instead modeled as a <var>direction</var> parameter, where it could have
+      the value <code>p</code>, for property, when the related blank node was a
+      <a>subject</a> and the value <code>r</code>, for reverse or reference, when
+      the related blank node was an <a>object</a>. Since <a>URGNA2012</a> only canonicalized
+      graphs, not datasets, there was no use of the <a>graph name</a> position.</li>
+    <li>In <a href="#hash-nd-quads" class="sectionRef"></a>, building the
+      <var>H<sub>n</sub></var> was done as follows:
+      <ol>
+        <li id="urgna-1">For each <var>quad</var> in <var>quads</var>:
+          <ol>
+            <li id="urgna-1-1">If the <var>quad</var>'s <a>subject</a> is a <a>blank node</a> that does not
+              match <var>identifier</var>, set <var>hash</var> to the result of the
+                <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>,
+                passing the <a>blank node identifier</a> for
+                <a>subject</a> as <var>related</var>, <var>quad</var>,
+                <var>issuer</var>, and
+                <code>p</code> as <var>position</var>.
+            </li>
+            <li id="urgna-1-2">Otherwise, if <var>quad</var>'s <a>object</a> is a <a>blank node</a> that does
+              not match <var>identifier</var>, set <var>hash</var> to the result of the
+                <a href="#hash-related-blank-node">Hash Related Blank Node algorithm</a>,
+                passing the <a>blank node identifier</a> for
+                <a>object</a> as <var>related</var>, <var>quad</var>,
+                <var>issuer</var>, and
+                <code>r</code> as <var>position</var>.
+            </li>
+            <li id="urgna-1-3">Otherwise, continue to the next quad.</li>
+            <li id="urgna-1-4">Add a mapping of <var>hash</var> to the
+              <a>blank node identifier</a> for the component
+              that matched (<a>subject</a> or <a>object</a>) to
+              <var>H<sub>n</sub></var>, adding an entry
+              as necessary.</li>
+          </ol>
+        </li>
+      </ol>
+    </li>
+  </ul>
+</section>
+
+<section id="index"></section>
+
+<section class="appendix informative" id="changes-from-fpwd">
+  <h2>Changes since the First Public Working Draft of 24 November 2022</h2>
+  <ul>
+    <li>
+      The algorithm, and the examples, have been changed to systematically
+      use the <code><em>xyz</em></code> format for blank node identifiers, instead of
+      `_:xyz`. See <a href="https://github.com/w3c/rdf-canon/issues/46">Issue 46</a>
+      for the discussion.
+    </li>
+    <li>
+      <a href="#hash-1d-quads" class="sectionRef"></a>
+      was simplified to remove the `simple` flag,
+      which was unused in existing implementations.
+      The original design of the algorithm was to use the
+      assigned canonical <a>blank node identifier</a>,
+      if available, instead of `_:a` or `_:z`,
+      similar to how it is used in
+      the related hash algorithm, but this text never made it into the spec
+      before implementations moved forward.
+      Therefore, the hashes never change,
+      making the loop based on the `simple`
+      flag that calls this algorithm unnecessary.
+      See <a href="https://github.com/w3c/rdf-canon/issues/23">Issue 23</a> for the discussion.
+    </li>
+
+    <li>Add definition for <a>canonical n-quads form</a>. Eventually, this should
+      be a citation from [[N-Quads]], when it is updated.
+      <a>Canonical n-quads form</a> is used in <a href="#hash-1d-quads" class="sectionRef"></a>.
+    </li>
+
+    <li>Removed issue marker for
+      <a href="https://github.com/w3c/rdf-canon/issues/15">Issue 15</a>
+      in <a href="#canon-algorithm" class="sectionRef"></a>,
+      adding a note that
+      <a data-cite="RDF11-CONCEPTS#dfn-literal">literal</a>
+      components of <a>quads</a> are not normalized,
+      and two literals with different syntactic representations
+      remain distinct resources.</li>
+
+    <li>Changed the way Blank Node identifiers are described
+      (see <a href="https://github.com/w3c/rdf-canon/issues/46">Issue 46</a>),
+      generally omitting the leading `_:` which is a serialization artifact.
+      This is still required in the algorithms, but the distinction
+      between what is an identifier, and the serialization form
+      is clarified.</li>
+
+    <li>Changed the name of the algorithm from URDNA2015 to <a>RDFC-1.0</a>.</li>
+
+    <li>Changed the term <strong>normalized dataset</strong> to
+      <a>canonicalized dataset</a>,
+      which is composed of the <a>input dataset</a>,
+      <a>input blank node identifier map</a>, and
+      <a>issued identifiers map</a>.</li>
+  </ul>
+</section>
+
+<section class="appendix informative" id="changes-from-cr">
+  <h2>Changes since the Candidate Recommentation Snapshot of 31 October 2023</h2>
+  <ul>
+    <li>
+      Clarified that detecting a poison dataset will result in an exception and early
+      termination of the <a href="#canon-algo-algo">Canonicalization Algorithm</a>.
+    </li>
+  </ul>
+</section>
+
+<section id="ack" class="appendix informative">
+  <h2>Acknowledgements</h2>
+
+  <p>The editors would like to thank Jeremy Carroll for his work on the
+    graph canonicalization problem,
+    Andy Seaborne and Gavin Carothers for providing valuable feedback and testing input
+    for the algorithm defined in this specification,
+    Sir Tim Berners-Lee for his thoughts on graph canonicalization over the years,
+    Jesús Arias Fisteus for his work on a similar algorithm, and Aiden Hogan, whose
+    publication [[Hogan-Canonical-RDF]] provided an important contemporary
+    analysis of the canonicalization problem and served as an independent
+    justification of the development of <a>RDFC-1.0</a>.</p>
+    
+  <p>The editors would also like to thank
+    the chairs of the Working Group, Phil Archer and Markus Sabadello,
+    and specific members of the Working Group whose active contributions
+    were critical in completing this work:
+    Pierre-Antoine Champin,
+    Ivan Herman,
+    David Lehn,
+    Kazue Sako,
+    Manu Sporny, and
+    Ted Thibodeau Jr.
+  </p>
+
+  <p data-include="common/participants.html"></p>
+
+  <p>This specification is based on work done in the
+    <a href="https://www.w3.org/community/credentials/">W3C Credentials Community Group</a>
+    published as [[CCG-RDC-FINAL]].
+    Contributors to the Community Group Final Report include:
+    Blake Regalia,
+    Dave Longley,
+    David Lehn,
+    David Lozano Jarque,
+    Gregg Kellogg,
+    Manu Sporny,
+    Markus Sabadello,
+    Matt Collier, and
+    Sebastian Schmittner.
+  </p>
+
+  <p>
+    Portions of the work on this specification have been funded by the European
+    Union's StandICT.eu 2023 program under sub-grantee contract numbers No. 08/12
+    and 09/25. The
+    content of this specification does not necessarily reflect the position or the
+    policy of the European Union and no official endorsement should be inferred.
+  </p>
+
+  <p>
+    Portions of the work on this specification have also been funded by the U.S.
+    Department of Homeland Security's Silicon Valley Innovation Program under contracts
+    70RSAT21T00000020 and 70RSAT23T00000006. The content of this specification does
+    not necessarily reflect the position or the policy of the U.S. Government and no
+    official endorsement should be inferred.
+  </p>
+
+  <p>
+    The Working Group acknowledges that the success of this specification is
+    dependent on a long history of work performed over multiple decades in both
+    academia and industry. We thank the individuals who iterated on the science
+    which led to the completion of this specification. A partial list of these
+    papers is found below, to the best of the Working Group's recollection.
+    Omission from this list, whether intentional or unintentional, is not meant
+    to imply that such an unlisted paper was not similarly important to the
+    development of this work.
+  </p>
+
+  <ul>
+    <li>
+      Berners-Lee, T., Connolly, D.:
+      [[[DesignIssues-Diff]]]
+      W3C Unofficial (2001).
+      <a href="https://www.w3.org/DesignIssues/Diff">https://www.w3.org/DesignIssues/Diff</a> [[DesignIssues-Diff]].
+    </li>
+    <li>
+      Carroll, J.J.:
+      [[[HPL-2003-142]]].
+      In: Fensel, D., Sycara, K., and Mylopoulos, J. (eds.)
+      The Semantic Web - ISWC 2003. pp. 369–384.
+      Springer, Berlin, Heidelberg (2003).
+      <a href="https://doi.org/10.1007/978-3-540-39718-2_24">https://doi.org/10.1007/978-3-540-39718-2_24</a> [[HPL-2003-142]].
+    </li>
+    <li>
+      Sayers, C., Karp, A.:
+      Computing the digest of an RDF graph,
+      Tech. Rep. HPL-2003-235 (R. 1),
+      Hewlett Packard Laboratories (2004).
+      <a href="https://web.archive.org/web/20230605070352/https://www.hpl.hp.com/techreports/2003/HPL-2003-235R1.html">https://www.hpl.hp.com/techreports/2003/HPL-2003-235R1.html</a>.
+    </li>
+    <li>
+      Carroll, J.J., Bizer, C., Hayes, P., Stickler, P.:
+      Named graphs.
+      Journal of Web Semantics. 3, 247–267 (2005).
+      <a href="https://doi.org/10.1016/j.websem.2005.09.001">https://doi.org/10.1016/j.websem.2005.09.001</a>.
+    </li>
+    <li>
+      Tummarello, G., Morbidoni, C., Bachmann-Gmür, R., Erling, O.:
+      RDFSync: Efficient Remote Synchronization of RDF Models.
+      In: Aberer, K., Choi, K.-S., Noy, N., Allemang, D., Lee, K.-I., Nixon, L., Golbeck, J., Mika, P., Maynard, D., Mizoguchi, R., Schreiber, G., and Cudré-Mauroux, P. (eds.)
+      The Semantic Web. pp. 537–551.
+      Springer, Berlin, Heidelberg (2007).
+      <a href="https://doi.org/10.1007/978-3-540-76298-0_39">https://doi.org/10.1007/978-3-540-76298-0_39</a>.
+    </li>
+    <li>
+      Oren, E., Delbru, R., Catasta, M., Cyganiak, R., Stenzhorn, H., Tummarello, G.:
+      Sindice.com: a document-oriented lookup index for open linked data.
+      International Journal of Metadata, Semantics and Ontologies. 3, 37–52 (2008).
+      <a href="https://doi.org/10.1504/IJMSO.2008.021204">https://doi.org/10.1504/IJMSO.2008.021204</a>.
+    </li>
+    <li>
+      Fisteus, J.A., Fernández García, N., Sánchez Fernández, L., Delgado Kloos, C.:
+      Hashing and canonicalizing Notation 3 graphs.
+      Journal of Computer and System Sciences. 76, 663–685 (2010).
+      <a href="https://doi.org/10.1016/j.jcss.2010.01.003">https://doi.org/10.1016/j.jcss.2010.01.003</a>.
+    </li>
+    <li>
+      Kasten, A., Scherp, A., Schauß, P.:
+      [[[eswc2014Kasten]]].
+      In: Presutti, V., d’Amato, C., Gandon, F., d’Aquin, M., Staab, S., and Tordai, A. (eds.)
+      The Semantic Web: Trends and Challenges. pp. 146–160.
+      Springer International Publishing, Cham (2014).
+      <a href="https://doi.org/10.1007/978-3-319-07443-6_11">https://doi.org/10.1007/978-3-319-07443-6_11</a> [[eswc2014Kasten]].
+    </li>
+    <li>
+      Hogan, A.:
+      [[[Hogan-Canonical-RDF]]].
+      ACM Trans. Web. 11, 22:1-22:62 (2017).
+      <a href="https://doi.org/10.1145/3068333">https://doi.org/10.1145/3068333</a> [[Hogan-Canonical-RDF]].
+    </li>
+    <li>
+      Arnold, R., Longley, D.:
+      RDF Dataset Normalization.
+      Report submitted to the W3C Credentials Community Group mailing list (2020).
+      <a href="https://lists.w3.org/Archives/Public/public-credentials/2021Mar/att-0220/RDFDatasetCanonicalization-2020-10-09.pdf">https://lists.w3.org/Archives/Public/public-credentials/2021Mar/att-0220/RDFDatasetCanonicalization-2020-10-09.pdf</a>.
+    </li>
+  </ul>
+</section>
+
+</body>
+</html>

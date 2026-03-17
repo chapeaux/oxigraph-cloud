@@ -1,0 +1,28 @@
+[package]
+name = "oxigraph-shacl"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "SHACL validation for Oxigraph via the rudof crate"
+
+[dependencies]
+oxigraph = { workspace = true, default-features = true }
+oxrdf.workspace = true
+srdf.workspace = true
+shacl_validation.workspace = true
+shacl_ast.workspace = true
+shacl_ir.workspace = true
+shacl_rdf.workspace = true
+rudof_rdf.workspace = true
+sparql_service.workspace = true
+prefixmap.workspace = true
+iri_s.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+oxrdf.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<title>n3 definition of some list functions</title>
+<link href='http://www.w3.org/StyleSheets/TR/base' rel='stylesheet'>
+<style>
+  body {background-image: none;}
+  dt {margin-top: 2em; font-weight: normal;}
+  dd code {display: inline;}
+  footer {text-align: center;}
+  dl.annotations dt {
+    margin-top: 0;
+    font-weight: bold;
+    float: left;
+    clear: left;
+    width: 17vw;
+  }
+  dl.annotations dd:after {
+      content: '';
+      display: block;
+      clear: both;
+      margin-bottom: 5px;
+  }
+  table.rdfs-definition td {vertical-align: top;}
+  .bold {font-weight: bold;}
+  .note, .historyNote, .editorialNote {
+    margin-left: 2em;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<p>
+<a href='http://www.w3.org/'>
+<img alt='W3C' height='48' src='http://www.w3.org/Icons/w3c_home' width='72'>
+</a>
+</p>
+<h3 class='label'>n3 definition of some list functions</h3>
+<div class='attribute comment'>
+<p>This is an ontology for computable list functions.</p>
+
+</div>
+<div class='wg'>
+<p>The vocabulary is published by the <a href="https://www.w3.org/community/n3-dev/">W3C Notation-3 Community Group</a>.</p>
+</div>
+<section class='terms'>
+<h4>Vocabulary Terms</h4>
+<section class='properties'>
+<h5>Property Definitions</h5>
+<dl>
+<dt id='vocab_list_append'>
+<strong>list:append</strong>
+<em>append</em>
+<span class='permalink'><a href='#vocab_list_append' title='Permalink for list:append'>(link)</a></span>
+</dt>
+<dd>
+<p>Concatenates separate lists into a single list</p>
+
+<p><strong>schema</strong>:
+<code>($a_1 .. $a_n) list:append $a_s</code></p>
+
+<p><strong>definition</strong>:
+<code>true</code> if and only if the subject is a list of lists and the concatenation of all those lists 
+is <code>$a_s</code>.
+<code>$a_s</code> can be calculated as a function of the subject.</p>
+
+<p><strong>requires</strong>:
+all <code>$a_1, .., $a_n</code> to be lists with all constituent members bound.</p>
+
+<p><strong>example</strong>:
+<code>( (1 2) (3 4) ) list:append (1 2 3 4).</code></p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_first'>
+<strong>list:first</strong>
+<em>first</em>
+<span class='permalink'><a href='#vocab_list_first' title='Permalink for list:first'>(link)</a></span>
+</dt>
+<dd>
+<p>Extracts the first member of a list.</p>
+
+<p><strong>schema</strong>:
+<code>($a_1 .. $a_n) list:first $a_s</code></p>
+
+<p><strong>definition</strong>:
+<code>true</code> if and only the subject is a list and <code>$a_s</code> is the first member of that list.
+<code>$a_s</code> can be calculated as a function of the subject.</p>
+
+<p><strong>requires</strong>:
+all <code>$a_1, .., $a_n</code> to be bound.</p>
+
+<dl class='annotations'>
+<dt>vs:term_status</dt>
+<dd class='term_status'>
+unstable
+</dd>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_in'>
+<strong>list:in</strong>
+<em>in</em>
+<span class='permalink'><a href='#vocab_list_in' title='Permalink for list:in'>(link)</a></span>
+</dt>
+<dd>
+<p>Determines if an subject is a member of the object list
+or binds every member of the object list to the subject.</p>
+
+<p><strong>schema</strong>:
+<code>$a_1 list:in $a_2</code></p>
+
+<p><strong>definition</strong>:
+<code>true</code> if and only <code>$a_2</code> is a list and <code>$a_1</code> is in that list.
+<code>$a_1</code> can be calculated from <code>$a_2</code>.</p>
+
+<p><strong>requires</strong>:
+<code>$a_2</code> to be a bound list.</p>
+
+<dl class='annotations'>
+<dt>rdfs:range</dt>
+<dd class='range'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_iterate'>
+<strong>list:iterate</strong>
+<em>iterate</em>
+<span class='permalink'><a href='#vocab_list_iterate' title='Permalink for list:iterate'>(link)</a></span>
+</dt>
+<dd>
+<p>Iterates over index/value pairs of the subject list</p>
+
+<p><strong>schema</strong>:
+<code>($a_1 .. $a_n) list:iterate ($i $v)</code></p>
+
+<p><strong>definition</strong>:
+Gets the matching pair of list index and list value for every member of the subject.
+If the object is a variable, it will create a solution for each member of the subject list.
+If any member of the object list is a variable, it will create a solution for all matching
+members of the subject list.
+If the object is ground and the entry at the specified index matches the specified value, 
+it evaluates to <code>true</code>; otherwise, <code>false</code>.</p>
+
+<p><strong>requires</strong>:
+<code>$i</code> is an integer.</p>
+
+<p><strong>example</strong>:
+<code>( 1 2 3 ) list:iterate ($i $v).</code></p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_last'>
+<strong>list:last</strong>
+<em>in</em>
+<span class='permalink'><a href='#vocab_list_last' title='Permalink for list:last'>(link)</a></span>
+</dt>
+<dd>
+<p>Extracts the first member of a list.</p>
+
+<p><strong>schema</strong>:
+<code>($a_1 .. $a_n) list:last $a_s</code></p>
+
+<p><strong>definition</strong>:
+<code>true</code> if and only the subject is a list and <code>$a_s</code> is the last member of that list.
+<code>$a_s</code> can be calculated as a function of the subject.</p>
+
+<p><strong>requires</strong>:
+all <code>$a_1, .., $a_n</code> to be bound.</p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_length'>
+<strong>list:length</strong>
+<em>length</em>
+<span class='permalink'><a href='#vocab_list_length' title='Permalink for list:length'>(link)</a></span>
+</dt>
+<dd>
+<p>Calculates the length of a list.</p>
+
+<p><strong>schema</strong>:
+<code>($a_1 .. $a_n) list:length $a_s</code></p>
+
+<p><strong>definition</strong>:
+<code>true</code> if and only the subject is a list and <code>$a_s</code> is integer length of that list.
+<code>$a_s</code> can be calculated as a function of the subject.</p>
+
+<p><strong>requires</strong>:</p>
+
+<ul>
+<li>all <code>$a_1, .., $a_n</code> to be bound.</li>
+<li><code>$a_s</code>: unbound, <code>xs:integer</code> (or its derived types) (see note on type promotion, and casting from string)</li>
+</ul>
+
+<dl class='annotations'>
+<dt>vs:term_status</dt>
+<dd class='term_status'>
+unstable
+</dd>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+xsd:integer
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_member'>
+<strong>list:member</strong>
+<em>member</em>
+<span class='permalink'><a href='#vocab_list_member' title='Permalink for list:member'>(link)</a></span>
+</dt>
+<dd>
+<p>Determines if an object is a member of the subject list
+or binds every member of the subject list to the object.</p>
+
+<p><strong>schema</strong>:
+<code>$a_1 list:member $a_2</code></p>
+
+<p><strong>definition</strong>:
+<code>true</code> if and only <code>$a_1</code> is a list and <code>$a_2</code> is in that list.
+<code>$a_2</code> can be calculated from <code>$a_1</code>.</p>
+
+<p><strong>requires</strong>:
+<code>$a_1</code> to be a bound list.</p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_memberAt'>
+<strong>list:memberAt</strong>
+<em>memberAt</em>
+<span class='permalink'><a href='#vocab_list_memberAt' title='Permalink for list:memberAt'>(link)</a></span>
+</dt>
+<dd>
+<p>Gets the member of a list at a given position (where the position of the first element is 1)</p>
+
+<p><strong>schema</strong>:
+<code>(($a_1 .. $a_n) $a_i) list:memberAt $a_m</code></p>
+
+<p><strong>definition</strong>:
+Iff  <code>($a_1 .. $a_n)</code> has an element at position <code>$a_i</code>,
+and if that element and <code>$a_m</code> can unify.</p>
+
+<p><strong>requires</strong>:
+<code>$a_i</code> or <code>$a_m</code> (or both) must be bound.</p>
+
+<p>Note that if <code>$a_i</code> is a variable, this builtin may bind it to more than one value
+(e.g. <code>((“A” “B” “A”) ?i) list:memberAt &quot;A&quot;</code>).</p>
+
+<p><strong>literal domains</strong>:</p>
+
+<ul>
+<li><code>$a_1 .. $a_n</code>, <code>$a_m</code>: unconstrained</li>
+<li><code>$a_i</code>: <code>xs:decimal</code>, <code>xs:float</code>, <code>xs:double</code> within the value space of <code>xs:integer</code>
+(see also note on type promotion and substitution).
+I.e., in case the double/float/decimal&#39;s literal&#39;s value is within the value space of integers,
+the literal will match the domain.
+In case of a negative integer, the index will count backwards from the length of the list.</li>
+</ul>
+
+<dl class='annotations'>
+<dt>vs:term_status</dt>
+<dd class='term_status'>
+unstable
+</dd>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+</dl>
+</dd>
+<dt id='vocab_list_remove'>
+<strong>list:remove</strong>
+<em>remove</em>
+<span class='permalink'><a href='#vocab_list_remove' title='Permalink for list:remove'>(link)</a></span>
+</dt>
+<dd>
+<p>Removes the second component of the subject list from the first component of that list.</p>
+
+<p><strong>schema</strong>:
+<code>($a_1 $a_2) list:remove $a_3</code></p>
+
+<p><strong>definition</strong>:
+Iff the subject is a list of two lists <code>$a_1</code> and <code>$a_2</code>, <code>$a_2</code> is a subset of <code>$a_1</code>
+and <code>$a_3</code> is a list composed of the members of the <code>$a_1</code> with
+all members of <code>$a_2</code> removed, matching left to right.
+<code>$a_3</code> can be calculated as a function of the subject.</p>
+
+<p><strong>requires</strong>:
+<code>$a_1</code> and <code>$a_2</code> must be bound lists.</p>
+
+<p><strong>example</strong>:
+<code>( (1 2 3 4) (2 3) ) list:remove (1 4).</code></p>
+
+<dl class='annotations'>
+<dt>vs:term_status</dt>
+<dd class='term_status'>
+unstable
+</dd>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+log:List
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+log:List
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</section>
+<footer>
+<p>All vocabularies are licensed by contributors under the
+<a href="http://www.w3.org/Consortium/Legal/copyright-software">W3C Software and Document License</a>.</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,16 @@
+**/target
+**/*.rs.bk
+Cargo.lock
+.idea
+*.iml
+js/node_modules
+lib/tests/rocksdb_bc_data
+venv
+.env
+data/
+.htpasswd
+**/docs/_build
+**/docs/build
+*.so
+*.pyc
+**.pyi

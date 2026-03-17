@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}-config
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+data:
+  # Backend configuration
+  OXIGRAPH_BACKEND: {{ .Values.backend | quote }}
+  OXIGRAPH_SHACL_MODE: {{ .Values.shacl.mode | quote }}
+  {{- if eq .Values.backend "tikv" }}
+  OXIGRAPH_PD_ENDPOINTS: {{ join "," .Values.tikv.pdEndpoints | quote }}
+  {{- end }}
+  # SHACL shapes can be pre-loaded by adding them here.
+  # Upload shapes at runtime via POST /shacl instead for dynamic management.
+  # Example:
+  # shapes.ttl: |
+  #   @prefix sh: <http://www.w3.org/ns/shacl#> .
+  #   @prefix ex: <http://example.org/> .
+  #   ex:PersonShape a sh:NodeShape ;
+  #     sh:targetClass ex:Person ;
+  #     sh:property [
+  #       sh:path ex:name ;
+  #       sh:minCount 1 ;
+  #       sh:datatype xsd:string ;
+  #     ] .

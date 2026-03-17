@@ -1,0 +1,5 @@
+# JetBrains IDEs
+.idea/
+
+# pyenv version file
+.python-version

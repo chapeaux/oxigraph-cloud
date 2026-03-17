@@ -1,0 +1,18 @@
+apiVersion: v2
+name: oxigraph-cloud
+description: Cloud-native Oxigraph RDF triplestore with optional TiKV storage backend and Rudof-based SHACL validation
+type: application
+version: 0.1.0
+appVersion: "0.5.6"
+keywords:
+  - rdf
+  - sparql
+  - triplestore
+  - tikv
+  - shacl
+  - oxigraph
+home: https://github.com/oxigraph/oxigraph
+sources:
+  - https://github.com/oxigraph/oxigraph
+maintainers:
+  - name: oxigraph-cloud-native

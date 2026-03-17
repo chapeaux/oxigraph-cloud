@@ -1,0 +1,79 @@
+[package]
+name = "oxigraph-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[features]
+rocksdb = ["oxigraph/rocksdb"]
+
+[dependencies]
+anyhow = "1"
+libfuzzer-sys = "0.4"
+oxiri = "0.2"
+oxigraph = { path = "../lib/oxigraph", default-features = false, features = ["rdf-12"] }
+oxjsonld.path = "../lib/oxjsonld"
+oxrdf.path = "../lib/oxrdf"
+oxrdfxml.path = "../lib/oxrdfxml"
+oxttl.path = "../lib/oxttl"
+sparesults.path = "../lib/sparesults"
+spargebra.path = "../lib/spargebra"
+spareval.path = "../lib/spareval"
+sparql-smith = { path = "../lib/sparql-smith", features = ["sep-0006"] }
+
+[profile.release]
+codegen-units = 1
+debug = true
+
+[workspace]
+
+[[bin]]
+name = "jsonld"
+path = "fuzz_targets/jsonld.rs"
+
+[[bin]]
+name = "nquads"
+path = "fuzz_targets/nquads.rs"
+
+[[bin]]
+name = "n3"
+path = "fuzz_targets/n3.rs"
+
+[[bin]]
+name = "rdf_xml"
+path = "fuzz_targets/rdf_xml.rs"
+
+[[bin]]
+name = "sparql_query"
+path = "fuzz_targets/sparql_query.rs"
+
+[[bin]]
+name = "sparql_query_eval"
+path = "fuzz_targets/sparql_query_eval.rs"
+
+[[bin]]
+name = "sparql_update"
+path = "fuzz_targets/sparql_update.rs"
+
+[[bin]]
+name = "sparql_update_eval"
+path = "fuzz_targets/sparql_update_eval.rs"
+
+[[bin]]
+name = "sparql_results_json"
+path = "fuzz_targets/sparql_results_json.rs"
+
+[[bin]]
+name = "sparql_results_xml"
+path = "fuzz_targets/sparql_results_xml.rs"
+
+[[bin]]
+name = "sparql_results_tsv"
+path = "fuzz_targets/sparql_results_tsv.rs"
+
+[[bin]]
+name = "trig"
+path = "fuzz_targets/trig.rs"

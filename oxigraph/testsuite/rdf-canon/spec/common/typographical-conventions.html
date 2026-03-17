@@ -1,0 +1,92 @@
+<p>The following typographic conventions are used in this specification:</p>
+
+<dl class="typography">
+  <dt><code>markup</code></dt><dd>
+    Markup (elements, attributes, properties),
+    machine processable values (string, characters, media types),
+    property names,
+    and file names are in red-orange monospace font.</dd>
+  <dt><var>variable</var></dt><dd>
+    A variable in pseudo-code or in an algorithm description is italicized.</dd>
+  <dt><dfn data-no-xref="">definition</dfn></dt><dd>
+    A definition of a term, to be used elsewhere in this or other specifications,
+    is italicized and in bold.</dd>
+  <dt><a data-lt="definition">definition reference</a></dt><dd>
+    A reference to a definition <em>in this document</em>
+    is underlined and is also an active link to the definition itself. </dd>
+  <dt><a data-lt="definition"><code>markup definition reference</code></a></dt><dd>
+    References to a definition <em>in this document</em>,
+    when the reference itself is also a markup, is underlined,
+    in a red-orange monospace font, and is also an active link to the definition itself.</dd>
+  <dt><a class="externalDFN">external definition reference</a></dt><dd>
+    A reference to a definition <em>in another document</em>
+    is underlined and italicized, and is also an active link to the definition itself.</dd>
+  <dt><a class="externalDFN"><code> markup external definition reference</code></a></dt><dd>
+    A reference to a definition <em>in another document</em>,
+    when the reference itself is also a markup,
+    is underlined and italicized in a red-orange monospace font,
+    and is also an active link to the definition itself.</dd>
+  <dt><a href="">hyperlink</a></dt><dd>
+    A hyperlink is underlined and in blue.</dd>
+  <dt>[<a href="">reference</a>]</dt><dd>
+    A document reference (normative or informative) is enclosed in square brackets
+    and links to the references section.</dd>
+  <dt><span class="details"><span class="summary">Explanation</span></span></dt><dd>
+    An expandable area to find a more detailed, non-normative explanation of a
+    particular algorithmic step.
+    <details>
+      <summary>Explanation</summary>
+      <p>This area would provide more information about the step involved.</p>
+    </details>
+  </dd>
+  <dt><span class="details"><span class="summary">Logging</span></span></dt><dd>
+    An expandable area to find suggestions for implementations to log
+    information about processing,
+    which may be useful in comparing with other implementations,
+    or with logs provided with each test case.
+    <details>
+      <summary>Logging</summary>
+      <p>For example, the following output snippet might
+        describe the operation of an implementation using the [[?YAML]] format.</p>
+      <pre class="logging yaml nohighlight" data-transform="updateExample">
+        <!--
+        ca:
+          ca2:
+            bn_to_quads:
+              e0:
+                - _:e0 <http://example.com/#p1> _:e1 .
+              e1:
+                ...
+          ca3:
+          - identifier: e0
+            h1dq:
+              nquads:
+                - _:a <http://example.com/#p1> _:z .
+        -->
+      </pre>
+    </details>
+  </dd>
+</dl>
+
+<p class="note">Notes are in light green boxes with a green left border and with a "Note" header in green.
+  Notes are always informative.</p>
+
+<pre class="example nohighlight">
+  Examples are in light khaki boxes, with khaki left border,
+  and with a numbered "Example" header in khaki.
+  Examples are always informative. The content of the example is in monospace font and may be 
+  syntax colored.
+
+  Examples may have tabbed navigation buttons
+  to show the results of transforming an example into other representations.
+
+  Code examples are generally given in a Turtle or TriG format for brevity,
+  where each line represents a single triple or quad.
+  Additionally, have the following implied directives:
+  
+  BASE &lt;http://example.com/>
+  PREFIX : &lt;#>
+
+  Following the Turtle/TriG syntax rules, blank nodes always appear in the 
+  `_:xyz` format.
+</pre>

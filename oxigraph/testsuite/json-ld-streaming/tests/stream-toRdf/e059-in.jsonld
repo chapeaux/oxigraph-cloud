@@ -1,0 +1,16 @@
+{
+  "@context": {
+    "@vocab": "http://example.org/vocab#"
+  },
+  "@type": "vocab-prefixed",
+  "@id": "example-with-vocab",
+  "property": "property expanded using @vocab",
+  "embed": {
+    "@context": {
+      "@vocab": null
+    },
+    "@type": "document-relative",
+    "@id": "example-vocab-reset",
+    "property": "@vocab reset, property will be dropped"
+  }
+}

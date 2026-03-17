@@ -1,0 +1,28 @@
+[submodule "testsuite/rdf-tests"]
+	path = testsuite/rdf-tests
+	url = https://github.com/w3c/rdf-tests.git
+[submodule "bench/bsbm-tools"]
+	path = bench/bsbm-tools
+	url = https://github.com/Tpt/bsbm-tools.git
+[submodule "oxrocksdb-sys/rocksdb"]
+	path = oxrocksdb-sys/rocksdb
+	url = https://github.com/facebook/rocksdb.git
+[submodule "oxrocksdb-sys/lz4"]
+	path = oxrocksdb-sys/lz4
+	url = https://github.com/lz4/lz4.git
+[submodule "testsuite/N3"]
+	path = testsuite/N3
+	url = https://github.com/w3c/N3.git
+	branch = master
+[submodule "testsuite/rdf-canon"]
+	path = testsuite/rdf-canon
+	url = https://github.com/w3c/rdf-canon.git
+[submodule "cli/templates/yasgui"]
+	path = cli/templates/yasgui
+	url = https://github.com/oxigraph/yasgui-release.git
+[submodule "testsuite/json-ld-streaming"]
+	path = testsuite/json-ld-streaming
+	url = https://github.com/w3c/json-ld-streaming.git
+[submodule "testsuite/json-ld-api"]
+	path = testsuite/json-ld-api
+	url = https://github.com/w3c/json-ld-api.git

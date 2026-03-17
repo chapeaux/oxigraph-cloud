@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<title>Schema for crypto built-in functions</title>
+<link href='http://www.w3.org/StyleSheets/TR/base' rel='stylesheet'>
+<style>
+  body {background-image: none;}
+  dt {margin-top: 2em; font-weight: normal;}
+  dd code {display: inline;}
+  footer {text-align: center;}
+  dl.annotations dt {
+    margin-top: 0;
+    font-weight: bold;
+    float: left;
+    clear: left;
+    width: 17vw;
+  }
+  dl.annotations dd:after {
+      content: '';
+      display: block;
+      clear: both;
+      margin-bottom: 5px;
+  }
+  table.rdfs-definition td {vertical-align: top;}
+  .bold {font-weight: bold;}
+  .note, .historyNote, .editorialNote {
+    margin-left: 2em;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<p>
+<a href='http://www.w3.org/'>
+<img alt='W3C' height='48' src='http://www.w3.org/Icons/w3c_home' width='72'>
+</a>
+</p>
+<h3 class='label'>Schema for crypto built-in functions</h3>
+<div class='attribute comment'>
+<p>These are terms drawn to match the available functions
+in <a href="http://freshmeat.sourceforge.net/projects/mxcrypto">mxCrypto</a>.</p>
+
+</div>
+<div class='wg'>
+<p>The vocabulary is published by the <a href="https://www.w3.org/community/n3-dev/">W3C Notation-3 Community Group</a>.</p>
+</div>
+<section class='terms'>
+<h4>Vocabulary Terms</h4>
+<section class='properties'>
+<h5>Property Definitions</h5>
+<dl>
+<dt id='vocab_cr_md5'>
+<strong>cr:md5</strong>
+<em>MD5 hash</em>
+<span class='permalink'><a href='#vocab_cr_md5' title='Permalink for cr:md5'>(link)</a></span>
+</dt>
+<dd>
+<p>The object is a MD5 hash of the subject.</p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+rdfs:Literal
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+xsd:string
+</dd>
+</dl>
+</dd>
+<dt id='vocab_cr_sha'>
+<strong>cr:sha</strong>
+<em>SHA-1 hash</em>
+<span class='permalink'><a href='#vocab_cr_sha' title='Permalink for cr:sha'>(link)</a></span>
+</dt>
+<dd>
+<p>The object is a SHA-1 hash of the subject.</p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+rdfs:Literal
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+xsd:string
+</dd>
+</dl>
+</dd>
+<dt id='vocab_cr_sha256'>
+<strong>cr:sha256</strong>
+<em>SHA-256 hash</em>
+<span class='permalink'><a href='#vocab_cr_sha256' title='Permalink for cr:sha256'>(link)</a></span>
+</dt>
+<dd>
+<p>The object is a SHA-256 hash of the subject.</p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+rdfs:Literal
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+xsd:string
+</dd>
+</dl>
+</dd>
+<dt id='vocab_cr_sha512'>
+<strong>cr:sha512</strong>
+<em>SHA-512 hash</em>
+<span class='permalink'><a href='#vocab_cr_sha512' title='Permalink for cr:sha512'>(link)</a></span>
+</dt>
+<dd>
+<p>The object is a SHA-512 hash of the subject.</p>
+
+<dl class='annotations'>
+<dt>rdfs:domain</dt>
+<dd class='domain'>
+rdfs:Literal
+</dd>
+<dt>rdfs:range</dt>
+<dd class='range'>
+xsd:string
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</section>
+<footer>
+<p>All vocabularies are licensed by contributors under the
+<a href="http://www.w3.org/Consortium/Legal/copyright-software">W3C Software and Document License</a>.</p>
+</footer>
+</body>
+</html>

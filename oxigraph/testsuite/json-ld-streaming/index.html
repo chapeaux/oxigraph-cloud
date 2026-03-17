@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Streaming JSON-LD</title>
+    <script src="https://www.w3.org/Tools/respec/respec-w3c" class="remove"></script>
+    <script type="text/javascript" src="common/common.js" class="remove" defer></script>
+    <script class='remove'>
+      // See https://github.com/w3c/respec/wiki/ for how to configure ReSpec
+      var respecConfig = {
+        specStatus: "ED",
+        testSuiteURI: "https://w3c.github.io/json-ld-streaming/tests/",
+        implementationReportURI: "https://w3c.github.io/json-ld-streaming/reports/",
+        shortName: "json-ld11-streaming",
+        editors: [{
+            name:       "Ruben Taelman",
+            url:        "https://www.rubensworks.net/",
+            company:    "Ghent University – imec",
+            companyURL: "http://idlab.ugent.be/",
+            w3cid:      "84199",
+        }],
+        maxTocLevel:  4,
+        noRecTrack:   "true",
+        github: {
+          repoURL: "https://github.com/w3c/json-ld-streaming/",
+          branch: "main"
+        },
+        group: "wg/json-ld",
+        wgPublicList: "public-json-ld-wg",
+      };
+    </script>
+  </head>
+  <body>
+    <section id="abstract">
+      <p>
+        JSON-LD [[JSON-LD11]] offers a JSON-based serialization for Linked Data.
+        One of the primary uses of JSON-LD is its ability to exchange RDF [[?RDF11-CONCEPTS]] data across the Web.
+        This can be done by first <a data-cite="JSON-LD11-API#serialize-rdf-as-json-ld-algorithm">serializing RDF to JSON-LD</a>,
+        after which data consumers can <a data-cite="JSON-LD11-API#deserialize-json-ld-to-rdf-algorithm">deserialize JSON-LD to RDF</a>.
+    </p>
+    <p>
+        Since RDF datasets may contain many triples,
+        and JSON-LD documents don't have size limits,
+        such documents could in some cases become very large.
+        For these cases, the ability to serialize and deserialize JSON-LD in a <em>streaming</em> way offers many advantages.
+        Streaming processing allows large documents to be parsed with only a limited amount of memory,
+        and processed chunks can be emitted as soon as they are processed,
+        as opposed to waiting until the whole dataset or document has been processed.
+    </p>
+    <p>
+        The <a class="externalDFN" href="https://www.w3.org/TR/json-ld-api/">recommended processing algorithms</a> [[JSON-LD11-API]]
+        do not work in a streaming manner, as these first load all required data in memory,
+        after which this data can be processed.
+        This note discusses the processing of JSON-LD in a streaming manner.
+        Concretely, a set of guidelines is introduced for efficiently serializing and deserializing JSON-LD in a streaming way.
+        These guidelines are encapsulated in a JSON-LD <a>streaming document form</a>, and a streaming RDF form.
+        These forms, when they are detected, allow implementations to apply streaming optimizations.
+      </p>
+    </section>
+    <section id="sotd">
+      <p>
+        This is an unofficial proposal.
+      </p>
+    </section>
+
+    <section id="introduction">
+      <h2>Introduction</h2>
+      <p>
+          This document discusses the concerns on serializing and deserializing JSON-LD in a streaming manner.
+          This document is primarily intended for the following audiences:
+      </p>
+      <ul>
+          <li>
+              Software developers who want to implement streaming algorithms to serialize or deserialize JSON-LD documents.
+          </li>
+          <li>
+              Web authors and developers who want to publish JSON-LD in a streaming manner.
+          </li>
+          <li>
+              Web authors and developers who want to consume JSON-LD in a streaming manner.
+          </li>
+      </ul>
+      <p>
+          To understand the basics in this note you must first be familiar with
+          <a data-cite="RFC8259" data-no-xref="">JSON</a>, which is detailed in [[RFC8259]]. You must also understand the
+          JSON-LD syntax defined in [[[JSON-LD11]]] [[JSON-LD11]],
+          which is the base syntax used for streaming processing.
+          To understand how JSON-LD maps to RDF, it is helpful to be
+          familiar with the basic RDF concepts [[?RDF11-CONCEPTS]].
+      </p>
+    </section>
+    
+    <section id="conformance">
+      <p>
+          <a>Streaming RDF Deserializers</a> and <a>Streaming RDF Serializers</a> can claim conformance to this specification.
+      </p>
+
+      <p>
+        A conforming <dfn>Streaming RDF Deserializer</dfn> is a system that can
+        <a href="#streaming-deserialization">deserialize JSON-LD to RDF</a>
+        for JSON-LD documents adhering to the <a>Streaming Document Form</a>
+        as defined in this specification,
+        and is a conforming <a data-cite="JSON-LD11-API#dfn-rdf-serializers-deserializers">RDF Deserializer</a>
+        according to the JSON-LD [[JSON-LD11]] specification minus the exceptions listed in this specification.
+      </p>
+      
+      <p>
+        A conforming <dfn>Streaming RDF Serializer</dfn> is a system that can
+        <a href="#streaming-serialization">serialize RDF to JSON-LD</a>
+        for RDF datasets adhering to the <a>streaming RDF dataset form</a>
+        as defined in this specification,
+        and is a conforming <a data-cite="JSON-LD11-API#dfn-rdf-serializers-deserializers">RDF Serializer</a>
+        according to the JSON-LD [[JSON-LD11]] specification minus the exceptions listed in this specification.
+      </p>
+
+      <p>
+        The <a href="#streaming-processing">processing discussion</a> in this specification merely contains implementation guidelines.
+        Thus, <a>Streaming RDF Deserializers</a> and <a>Streaming RDF Serializers</a> may
+        implement the algorithms given in this specification in any way desired,
+        so long as the end result is indistinguishable from the result that would
+        be obtained by the specification's algorithms.
+      </p>
+
+      <p class="note">
+        Implementers can partially check their level of conformance to
+        this specification by successfully passing the test cases of the
+        <a href="https://w3c.github.io/json-ld-streaming/tests/">Streaming JSON-LD test suite</a>.
+        Note, however, that passing all the tests in the test
+        suite does not imply complete conformance to this specification. It only implies
+        that the implementation conforms to aspects tested by the test suite.
+      </p>
+    </section> <!-- end of Conformance section -->
+    
+    <section id="streaming-document-form">
+      <h2>Streaming Document Form</h2>
+      <p>
+          There are <a data-cite="JSON-LD11#forms-of-json-ld">multiple ways of describing data in JSON-LD</a>,
+          each having their own use cases.
+          This section introduces a <em>streaming JSON-LD document form</em>,
+          which enables JSON-LD documents to be <em>deserialized</em> in a streaming manner.
+      </p>
+
+      <section>
+        <h3 id="key-ordering-importance">Importance of Key Ordering</h3>
+        <p>
+            The order in which key-value pairs occur in JSON-LD nodes conveys no meaning.
+            For instance, the following two JSON-LD documents have the same meaning, even though they are syntactically different.
+        </p>
+        <pre class="example" title="Name, homepage and image come after @id">
+          {
+            "@context": "http://schema.org/",
+            "@id": "https://www.rubensworks.net/#me",
+            "name": "Ruben Taelman",
+            "url": "https://www.rubensworks.net/",
+            "image": "https://www.rubensworks.net/img/ruben.jpg"
+          }
+        </pre>
+        <pre class="example" title="Name, homepage and image come before @id">
+          {
+            "@context": "http://schema.org/",
+            "name": "Ruben Taelman",
+            "url": "https://www.rubensworks.net/",
+            "image": "https://www.rubensworks.net/img/ruben.jpg",
+            "@id": "https://www.rubensworks.net/#me"
+          }
+        </pre>
+        <p>
+            In a streaming JSON-LD document, the order of certain keys is important.
+            This is because streaming JSON-LD processors may require the presence of some keys before others can be processed,
+            and ordering keys in certain ways may lead to better processing performance.
+        </p>
+        <p>
+            In the two snippets before, the first example can be processed more efficiently by a streaming processor.
+            Concretely, a streaming JSON-LD deserializer can emit an RDF triple each time a property (<code>"name"</code>, <code>"url"</code>, <code>"image"</code>) has been read, because the <code>"@id"</code> has been defined before.
+            This is because the <code>"@id"</code> defines the RDF subject,
+            the property key defines the RDF predicate,
+            and the property value defines RDF object.
+            This ensures that all required information is needed for constructing and emitting an RDF triple each time a property is encountered.
+        </p>
+        <p>
+            For the second example, where the <code>"@id"</code> is only defined at the end,
+            a streaming deserializer would have to <em>buffer</em> the properties until the <code>"@id"</code> key is encountered.
+            Since the RDF subject of our triples is defined via <code>"@id"</code>,
+            the RDF triples can only be emitted after this last key has been read.
+        </p>
+      </section>
+      
+      <section>
+        <h3 id="key-ordering-required">Required Key Ordering</h3>
+        <p>
+            In order for a JSON-LD document to be a in a <a>streaming document form</a>,
+            the keys in each JSON node MUST be in the following order:
+        </p>
+        <ol>
+            <li><code>@context</code></li>
+            <li><code>@type</code></li>
+            <li><em>Other properties</em></li>
+        </ol>
+        <p>
+            Each of these keys is optional, and may be omitted.
+            Only those that are present must occur in the following order.
+        </p>
+        <p>
+            This order is important because <code>@context</code>
+            can change the meaning of all following entries in the node and its children.
+            Additionally, <code>@type</code> could indicate a <a data-cite="JSON-LD11#dfn-type-scoped-context">type-scoped context</a>,
+            which may have the same implications of an <code>@context</code>.
+            This means that these MUST always be processed before all other entries.
+        </p>
+        <div class="note" role="note" id="key-ordering-json">
+            <p class="">
+                Entries in nodes have a defined order when serialized as JSON.
+                <a data-cite="rfc8259#section-4">However, this this order is not always kept by JSON parsing libraries</a>.
+                This means that streaming processors MUST make use of JSON parsers that preserve this order to be effective.
+            </p>
+        </div>
+        <div class="note" role="note" id="key-ordering-alias">
+            <p class="">
+                <code>@type</code> can be <a data-cite="JSON-LD11#aliasing-keywords">aliased</a> to other keys,
+                for which the order also applies.
+            </p>
+        </div>
+      </section>
+      
+      <section>
+        <h3 id="key-ordering-recommended">Recommended Key Ordering</h3>
+        <p>
+            In addition to the <a href="#key-ordering-required">required key ordering</a>,
+            an <code>@id</code> key SHOULD be present as the first entry of the other properties,
+            right after <code>@context</code> and <code>@type</code>.
+        </p>
+        <p>
+            By placing <code>@id</code> before other properties in a node,
+            streaming deserializers can determine the subject of this node early on,
+            and they can immediately emit following properties as RDF triples as soon as they are read.
+        </p>
+        <p>
+            If a node does not define an explicit <code>@id</code>,
+            the subject of this node usually becomes an implicit <em>blank node</em>.
+            To improve potential processing performance,
+            it is recommended to always add an explicit <a data-cite="RDF11-CONCEPTS#dfn-blank-node-identifier">blank node identifier</a> in these cases using <code>@id</code>.
+        </p>
+        <p>
+            While not recommended, <code>@id</code> can also come after any other properties,
+            which requires the streaming deserializer to <em>buffer</em> these properties
+            until an <code>@id</code> is read, or the node closes.
+        </p>
+        <div class="note" role="note" id="key-ordering-recommended-for-who">
+            <p class="">
+            This recommended key ordering SHOULD be followed by streaming document authors.
+            Streaming processors implementations MUST NOT assume that a given streaming document will adhere to this recommendation.
+            <br />
+            If a processor sees that a document does not adhere to this recommendation, then it MAY produce a warning.
+            </p>
+        </div>
+      </section>
+      
+      <section class="informative">
+          <h3 id="streaming-document-examples">Examples</h3>
+          <p>
+              Hereafter, a couple of JSON-LD document examples are listed that either adhere, adhere with non-recommended order, or do not adhere
+              to the <a>streaming document form</a>.
+          </p>
+          <section>
+              <h3 id="streaming-document-examples-valid">Valid Examples</h3>
+              <pre class="example" title="Valid streaming document with @context, @id, and other properties">
+                {
+                  "@context": "http://schema.org/",
+                  "@id": "https://www.rubensworks.net/#me",
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg"
+                }
+              </pre>
+              <pre class="example" title="Valid streaming document with @context, blank @id, and other properties">
+                {
+                  "@context": "http://schema.org/",
+                  "@id": "_:blank_node",
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg"
+                }
+              </pre>
+              <pre class="example" title="Valid streaming document with nested nodes">
+                {
+                  "@context": "http://schema.org/",
+                  "@id": "https://www.rubensworks.net/#me",
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg",
+                  "knows": {
+                    "@id": "https://greggkellogg.net/foaf#me",
+                    "name": "Gregg Kellogg"
+                  }
+                }
+              </pre>
+              <pre class="example" title="Valid streaming document with nested nodes and embedded context">
+                {
+                  "@context": "http://schema.org/",
+                  "@id": "https://www.rubensworks.net/#me",
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg",
+                  "knows": {
+                    "@context": {
+                      "name": "http://xmlns.com/foaf/0.1/name"
+                    },
+                    "@id": "https://greggkellogg.net/foaf#me",
+                    "name": "Gregg Kellogg"
+                  }
+                }
+              </pre>
+              <pre class="example" title="Valid streaming document with @context, @type-scoped context, @id, and other properties">
+                {
+                  "@context": {
+                    "Person": {
+                      "@id": "http://schema.org/Person",
+                      "@context": "http://schema.org/"
+                    }
+                  },
+                  "@type": "Person",
+                  "@id": "https://www.rubensworks.net/#me",
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg"
+                }
+              </pre>
+          </section>
+          <section>
+              <h3 id="streaming-document-examples-nonrec">Valid, Non-recommended Examples</h3>
+              <pre class="example nohighlight" data-transform="updateExample"
+                   title="Non-recommended streaming document with @context and without @id">
+                {
+                  "@context": "http://schema.org/",
+                  ####// @id is missing, considered a blank node####
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg"
+                }
+              </pre>
+              <pre class="example nohighlight" data-transform="updateExample"
+                   title="Valid streaming document without @context and @id">
+                {
+                  ####// @context is not required, but @id is recommended here####
+                  "http://schema.org/name": "Ruben Taelman",
+                  "http://schema.org/url": {"@id": "https://www.rubensworks.net/"},
+                  "http://schema.org/image": {"@id": "https://www.rubensworks.net/img/ruben.jpg"}
+                }
+              </pre>
+          </section>
+          <section>
+              <h3 id="streaming-document-examples-invalid">Invalid Examples</h3>
+              <pre class="example nohighlight" data-transform="updateExample"
+                   title="Invalid streaming document where @context comes too late">
+                {
+                  "@id": "https://www.rubensworks.net/#me",
+                  ####// @context must come before @id####
+                  "@context": "http://schema.org/",
+                  "name": "Ruben Taelman",
+                  "url": "https://www.rubensworks.net/",
+                  "image": "https://www.rubensworks.net/img/ruben.jpg"
+                }
+              </pre>
+              <pre class="example nohighlight" data-transform="updateExample"
+                   title="Invalid streaming document where @type comes too late">
+                {
+                  "http://schema.org/name": "Ruben Taelman",
+                  "@type": "http://schema.org/Person", ####// @type must come before properties####
+                  "http://schema.org/url": {"@id": "https://www.rubensworks.net/"},
+                  "http://schema.org/image": {"@id": "https://www.rubensworks.net/img/ruben.jpg"}
+                }
+              </pre>
+          </section>
+      </section>
+      
+      <section>
+        <h3 id="streaming-profile">Streaming Document Profile</h3>
+        <p>
+            JSON-LD documents can be signaled or requested in <dfn data-lt="streaming document">streaming document form</dfn>.
+            The profile URI identifying the <a>streaming document form</a>
+            is <code>http://www.w3.org/ns/json-ld#streaming</code>.
+        </p>
+        <p>
+            The following example illustrates how this profile parameter can be used to request a streaming document over HTTP.
+        </p>
+        <div class="example" data-ignore title="HTTP Request with profile requesting a streaming document">
+          <pre data-content-type="http" data-ignore="" aria-busy="false"><code class="hljs http"><span class="hljs-keyword">GET</span> <span class="hljs-string">/ordinary-json-document.json</span> HTTP/1.1
+<span class="hljs-attribute">Host</span>: example.com
+<span class="hljs-attribute">Accept</span>: application/ld+json;<span class="hl-bold">profile=http://www.w3.org/ns/json-ld#streaming</span></code></pre>
+          <p>Requests the server to return the requested resource as JSON-LD
+            in <a>streaming document form</a>.</p>
+        </div>
+      </section>
+
+    </section>
+    
+    <section id="streaming-rdf-form">
+      <h2>Streaming RDF Form</h2>
+      <p>
+          This section introduces a <dfn>streaming RDF dataset form</dfn>,
+          which enables RDF datasets to be processed in a streaming manner
+          so that they can efficiently <em>serialized</em> into JSON-LD by a streaming JSON-LD processor.
+      </p>
+      <section>
+        <h3 id="triple-ordering-importance">Importance of Triple Ordering</h3>
+        <p>
+            The order in which RDF triples occur in an RDF dataset convey no meaning.
+            For instance, the following two RDF datasets (serialized in [[[?Turtle]]] [[?Turtle]]) have the same meaning,
+            even though they have a different order of triples.
+        </p>
+        <pre class="example" data-transform="updateExample"
+             data-content-type="text/turtle"
+             title="A first order of triples">
+          <!--
+          @prefix schema: <http://schema.org/> .
+          <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+          <https://www.rubensworks.net/#me> schema:url <https://www.rubensworks.net/> .
+          <https://greggkellogg.net/foaf#me> schema:name "Gregg Kellogg" .
+          <https://greggkellogg.net/foaf#me> schema:url <https://greggkellogg.net/> .
+          -->
+        </pre>
+        <pre class="example" data-transform="updateExample"
+             data-content-type="text/turtle"
+             title="A second order of triples">
+          <!--
+          @prefix schema: <http://schema.org/> .
+          <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+          <https://greggkellogg.net/foaf#me> schema:name "Gregg Kellogg" .
+          <https://www.rubensworks.net/#me> schema:url <https://www.rubensworks.net/> .
+          <https://greggkellogg.net/foaf#me> schema:url <https://greggkellogg.net/> .
+          -->
+        </pre>
+        <p>
+            For streaming JSON-LD processors, the order of RDF triples may be important.
+            Processors that read triples one by one, and convert them to a JSON-LD document in a streaming manner,
+            can benefit from having triples in a certain order.
+        </p>
+        <p>
+            For instance, the order from first snippet above can lead to more compact JSON-LD documents than the order from the second snippet
+            when handled by a streaming JSON-LD processor.
+            This is because the first order groups triples with the same subject,
+            which can be exploited during streaming JSON-LD serialization by using the same <code>"@id"</code> key.
+            The second order mixes subjects, which means that streaming JSON-LD serialization will have to assign separate <code>"@id"</code> keys
+            for each triple, resulting in duplicate <code>"@id"</code> keys.
+        </p>
+        <p>
+            Streaming JSON-LD serializations of both examples can be seen below.
+        </p>
+        <pre class="example" title="More compact JSON-LD serialization of the first order">
+          [
+            {
+              "@id": "https://www.rubensworks.net/#me",
+              "http://schema.org/name": "Ruben Taelman",
+              "http://schema.org/url": { "@id": "https://www.rubensworks.net/" }
+            },
+            {
+              "@id": "https://greggkellogg.net/foaf#me",
+              "http://schema.org/name": "Gregg Kellogg",
+              "http://schema.org/url": { "@id": "https://greggkellogg.net/" }
+            }
+          ]
+        </pre>
+        <pre class="example" title="Less compact JSON-LD serialization of the second order">
+          [
+            {
+              "@id": "https://www.rubensworks.net/#me",
+              "http://schema.org/name": "Ruben Taelman"
+            },
+            {
+              "@id": "https://www.rubensworks.net/#me",
+              "http://schema.org/name": "Gregg Kellogg"
+            },
+            {
+              "@id": "https://greggkellogg.net/foaf#me",
+              "http://schema.org/url": { "@id": "https://www.rubensworks.net/" }
+            },
+            {
+              "@id": "https://greggkellogg.net/foaf#me",
+              "http://schema.org/url": { "@id": "https://greggkellogg.net/" }
+            }
+          ]
+        </pre>
+      </section>
+      <section>
+        <h3 id="triple-ordering-recommended">Recommended Triple Ordering</h3>
+        <p>
+            This section introduces <em>recommendations</em> for defining the order in an RDF dataset,
+            such that it can be processed more efficiently by <em>streaming JSON-LD processors</em>.
+        </p>
+        <ol>
+            <li>
+                <strong>Group triples with the same named graph.</strong>
+                <br />
+                Allows grouping of <code>@graph</code> nodes.
+            </li>
+            <li>
+                <strong>Group triples with the same subject.</strong>
+                <br />
+                Allows grouping of <code>@id</code> keys.
+            </li>
+            <li>
+                <strong>Group triples with the same predicate.</strong>
+                <br />
+                Allows grouping of property keys.
+            </li>
+            <li>
+                <strong>Group triples with a given term as named graph together with triples having this term as subject.</strong>
+                <br />
+                Allows the combination of <code>@graph</code> nodes with <code>@id</code>.
+            </li>
+            <li>
+                <strong>Group triples with a given term as object with triples having this term as subject.</strong>
+                <br />
+                Allows nesting of nodes within other nodes.
+            </li>
+        </ol>
+        <div class="note" role="note" id="triple-ordering-recommended-how">
+            <p class="">
+            One straightforward way to follow the first three recommendations is by sorting all triples (or quads)
+            in the order <em>graph</em>, <em>subject</em>, <em>predicate</em>, <em>object</em>.
+            <br />
+            Existing triple stored may already perform this kind of grouping automatically.
+            </p>
+            <p>
+            Note also that, depending on the triples,
+            it might not be possible to strictly comply with all these recommendations.
+            </p>
+        </div>
+        <p>
+            An RDF dataset that adheres to at least one of these recommendations is considered to have
+            a <a>streaming RDF dataset form</a>.
+        </p>
+      </section>
+      <section class="informative">
+          <h3 id="streaming-rdf-examples">Examples</h3>
+          <p>
+              Hereafter, a couple of RDF datasets are listed, together with corresponding serialized JSON-LD in a streaming manner.
+              Each example illustrates the importance of the recommended triple ordering within
+              the <a>streaming RDF dataset form</a>.
+          </p>
+          <p>
+              The examples using named graphs are serialized in the [[[TriG]]] format [[TriG]].
+          </p>
+          <section>
+              <h3 id="streaming-rdf-example-graph">@graph grouping</h3>
+              <pre class="example" data-transform="updateExample"
+                   data-content-type="text/turtle"
+                   title="Triples with the same named graph are grouped">
+                <!--
+                @prefix schema: <http://schema.org/> .
+                <http://example.org/graph1> {
+                  <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+                }
+                <http://example.org/graph1> {
+                  <https://www.rubensworks.net/#me> schema:url <https://www.rubensworks.net/> .
+                }
+                <http://example.org/graph2> {
+                  <https://greggkellogg.net/foaf#me> schema:name "Gregg Kellogg" .
+                }
+                <http://example.org/graph2> {
+                  <https://greggkellogg.net/foaf#me> schema:url <https://greggkellogg.net/> .
+                }
+                -->
+              </pre>
+              <pre class="example" title="Triples with the same named graph can be grouped within the same @graph block">
+                [
+                  {
+                    "@id": "http://example.org/graph1",
+                    "@graph": [
+                      {
+                        "@id": "https://www.rubensworks.net/#me",
+                        "http://schema.org/name": "Ruben Taelman",
+                        "http://schema.org/url": { "@id": "https://www.rubensworks.net/" }
+                      }
+                    ]
+                  },
+                  {
+                    "@id": "http://example.org/graph2",
+                    "@graph": [
+                      {
+                        "@id": "https://greggkellogg.net/foaf#me",
+                        "http://schema.org/name": "Gregg Kellogg",
+                        "http://schema.org/url": { "@id": "https://greggkellogg.net/" }
+                      }
+                    ]
+                  }
+                ]
+              </pre>
+          </section>
+          <section>
+              <h3 id="streaming-rdf-example-id">@id grouping</h3>
+              <pre class="example" data-transform="updateExample"
+                   data-content-type="text/turtle"
+                   title="Triples with the same subject are grouped">
+                <!--
+                @prefix schema: <http://schema.org/> .
+                <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+                <https://www.rubensworks.net/#me> schema:url <https://www.rubensworks.net/> .
+                <https://greggkellogg.net/foaf#me> schema:name "Gregg Kellogg" .
+                <https://greggkellogg.net/foaf#me> schema:url <https://greggkellogg.net/> .
+                -->
+              </pre>
+              <pre class="example" title="Triples with the same subject can be grouped within the same @id block">
+                [
+                  {
+                    "@id": "https://www.rubensworks.net/#me",
+                    "http://schema.org/name": "Ruben Taelman",
+                    "http://schema.org/url": { "@id": "https://www.rubensworks.net/" }
+                  },
+                  {
+                    "@id": "https://greggkellogg.net/foaf#me",
+                    "http://schema.org/name": "Gregg Kellogg",
+                    "http://schema.org/url": { "@id": "https://greggkellogg.net/" }
+                  }
+                ]
+              </pre>
+          </section>
+          <section>
+              <h3 id="streaming-rdf-example-property">Property grouping</h3>
+              <pre class="example" data-transform="updateExample"
+                   data-content-type="text/turtle"
+                   title="Triples with the same predicate are grouped">
+                <!--
+                @prefix schema: <http://schema.org/> .
+                <https://www.rubensworks.net/#me> schema:name "Ruben" .
+                <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+                <https://www.rubensworks.net/#me> schema:url <https://www.rubensworks.net/> .
+                <https://www.rubensworks.net/#me> schema:url <https://github.com/rubensworks/> .
+                -->
+              </pre>
+              <pre class="example" title="Triples with the same predicate can be grouped within the same property array">
+                [
+                  {
+                    "@id": "https://www.rubensworks.net/#me",
+                    "http://schema.org/name": [
+                      "Ruben",
+                      "Ruben Taelman"
+                    ],
+                    "http://schema.org/url": [
+                      { "@id": "https://www.rubensworks.net/" },
+                      { "@id": "https://github.com/rubensworks/" }
+                    ]
+                  }
+                ]
+              </pre>
+          </section>
+          <section>
+              <h3 id="streaming-rdf-example-graph-id">@graph and @id grouping</h3>
+              <pre class="example" data-transform="updateExample"
+                   data-content-type="text/turtle"
+                   title="Statements about a named graph are group with triples within this named graph">
+                <!--
+                @prefix schema: <http://schema.org/> .
+                <http://example.org/graph1> {
+                  <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+                }
+                <http://example.org/graph1> {
+                  <https://www.rubensworks.net/#me> schema:url <https://www.rubensworks.net/> .
+                }
+                <http://example.org/graph1> schema:name "Graph 1" .
+                <http://example.org/graph2> {
+                  <https://greggkellogg.net/foaf#me> schema:name "Gregg Kellogg" .
+                }
+                <http://example.org/graph2> {
+                  <https://greggkellogg.net/foaf#me> schema:url <https://greggkellogg.net/> .
+                }
+                <http://example.org/graph2> schema:name "Graph 2" .
+                -->
+              </pre>
+              <pre class="example" title="Statements about a named graph can be attached within the same @graph block">
+                [
+                  {
+                    "@id": "http://example.org/graph1",
+                    "@graph": [
+                      {
+                        "@id": "https://www.rubensworks.net/#me",
+                        "http://schema.org/name": "Ruben Taelman",
+                        "http://schema.org/url": { "@id": "https://www.rubensworks.net/" }
+                      }
+                    ],
+                    "name": "Graph 1"
+                  },
+                  {
+                    "@id": "http://example.org/graph2",
+                    "@graph": [
+                      {
+                        "@id": "https://greggkellogg.net/foaf#me",
+                        "http://schema.org/name": "Gregg Kellogg",
+                        "http://schema.org/url": { "@id": "https://greggkellogg.net/" }
+                      }
+                    ],
+                    "name": "Graph 2"
+                  }
+                ]
+              </pre>
+          </section>
+          <section>
+              <h3 id="streaming-rdf-example-object">Subject and object grouping</h3>
+              <pre class="example" data-transform="updateExample"
+                   data-content-type="text/turtle"
+                   title="Triples about a subject come right after triples having this as object">
+                <!--
+                @prefix schema: <http://schema.org/> .
+                <https://www.rubensworks.net/#me> schema:name "Ruben Taelman" .
+                <https://www.rubensworks.net/#me> schema:knows <https://greggkellogg.net/foaf#me> .
+                <https://greggkellogg.net/foaf#me> schema:knows "Gregg Kellogg" .
+                -->
+              </pre>
+              <pre class="example" title="Triples can be chained in nested nodes">
+                [
+                  {
+                    "@id": "https://www.rubensworks.net/#me",
+                    "http://schema.org/name": "Ruben Taelman",
+                    "http://schema.org/knows": {
+                      "@id": "https://greggkellogg.net/foaf#me",
+                      "http://schema.org/name": "Gregg Kellogg"
+                    }
+                  }
+                ]
+              </pre>
+          </section>
+      </section>
+    </section>
+    
+    <section id="streaming-processing">
+      <h2>Streaming Processing</h2>
+      <p>
+          Whenever a JSON-LD document is present in <a>streaming document form</a>,
+          or if an RDF dataset is present in a <a>streaming RDF dataset form</a>,
+          a processor MAY process these in a streaming manner.
+      </p>
+      <p>
+          This section describes high-level guidelines for processing JSON-LD in a streaming manner.
+          Concretely, guidelines are given for <a data-cite="JSON-LD11-API#deserialize-json-ld-to-rdf-algorithm">deserializing JSON-LD to RDF</a>, and <a data-cite="JSON-LD11-API#serialize-rdf-as-json-ld-algorithm">serializing RDF to JSON-LD</a>.
+          Further details on processing can be found in [[[JSON-LD11-API]]] [[JSON-LD11-API]].
+      </p>
+      <section>
+        <h3 id="streaming-deserialization">Deserialization</h3>
+        <p>
+            A streaming deserializer MAY be implemented by considering a JSON-LD document as a stream of incoming characters.
+            By reading character-by-character, a deserializer can detect the contained JSON nodes and its key-value pairs.
+        </p>
+        <p>
+            A streaming deserializer MUST assume that the <a href="#key-ordering-required">required key ordering</a> of a <a>streaming document</a> is present. If a different order is detected, an error MUST be thrown with error code <code>"invalid streaming key order"</code>.
+        </p>
+        <p>
+            The first expected entry in a node is <code>@context</code>.
+            If such an entry is present, all following entries in this node can make use of it, possibly inheriting parts of the context from parent nodes.
+            If such an entry is not present, only contexts from parent nodes are considered for this node.
+        </p>
+        <p>
+            If an <code>@type</code> entry (or any alias of <code>@type</code>) is detected,
+            it is checked whether or not it defines a type-scoped context according to the current node's context.
+            If this defines a type-scoped context, the context for the current node is overridden.
+            <br />
+            Additionally, the <code>@type</code> must emit <code>rdf:type</code> triples based on the current node's subject and values.
+            This subject will possibly only be determined later on, which will require buffering of these incomplete triples.
+        </p>
+        <p class="note">
+            In case multiple type-scoped contexts apply,
+            they must <em>not</em> be processed by order of appearance,
+            but using the lexicographical order.
+        </p>
+        <p>
+            If an <code>@id</code> entry is detected, the RDF subject for the current node is defined for later usage.
+            Any other entries that are detected before <code>@id</code> must be buffered until <code>@id</code> is found, or the node closes (which sets the subject to a fresh blank node).
+        </p>
+        <p>
+            For every other property, the default JSON-LD algorithms are followed based on the current node's subject.
+        </p>
+        <p>
+            As an example of a system architecture of a streaming JSON-LD deserializer can be found in <a href="https://www.rubensworks.net/blog/2019/03/13/streaming-rdf-parsers/">this blog post</a>.
+        </p>
+      </section>
+      <section>
+        <h3 id="streaming-serialization">Serialization</h3>
+        <p>
+            A streaming JSON-LD serializer reads triples one by one,
+            and outputs a JSON-LD document character-by-character,
+            which can be emitted in a streaming manner.
+            <br />
+            This MAY be a JSON-LD document in the <a>streaming document form</a>.
+        </p>
+        <p>
+            A streaming serializer can benefit from having <a href="#triple-ordering-recommended">triples ordered</a> following a <a>streaming RDF dataset form</a>,
+            but it SHOULD NOT assume that RDF datasets follow this form in full.
+        </p>
+        <p>
+            As a basis, a streaming serializer can produce an array of
+            <a data-cite="JSON-LD11#dfn-node-object">node objects</a> or
+            <a data-cite="JSON-LD11#dfn-graph-object">graph objects</a>,
+            each one representing a single RDF triple/quad.
+        </p>
+        <p>
+            On top of this base case, several optimizations can be applied to achieve a more compact representation in JSON-LD.
+            These optimizations are dependent on the surrounding triples, which is determined by the overall triple order.
+        </p>
+        <p>
+            When a <a data-cite="JSON-LD11#the-context">JSON-LD context</a>
+            is passed to a streaming serializer, <a data-cite="JSON-LD11-API#compaction">compaction techniques</a>
+            MAY be applied.
+            For instance, instead of writing properties as full IRIs, they can be <em>compacted</em> based on the presence of terms and prefixes in the context.
+        </p>
+        <p>
+            Due to the chained nature of RDF lists, serializing them to JSON-LD with the <code>@list</code> keyword in a streaming way may not always be possible,
+            since you may not know beforehand if a triple is part of a valid RDF list.
+            Optionally, a streaming RDF serializer MAY provide an alternative method to emit <code>@list</code> keywords.
+        </p>
+        <p>
+            Since streaming RDF processors process triples one by one,
+            so that they don't need to keep all triples in memory,
+            they loose the ability to deduplicate triples.
+            As such, a streaming JSON-LD serializer MAY produce JSON-LD that contains duplicate triples.
+        </p>
+      </section>
+    </section>
+  </body>
+</html>

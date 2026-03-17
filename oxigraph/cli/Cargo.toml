@@ -1,0 +1,52 @@
+[package]
+name = "oxigraph-cli"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+keywords = ["RDF", "SPARQL", "graph-database", "database"]
+categories = ["command-line-utilities", "database"]
+repository = "https://github.com/oxigraph/oxigraph/tree/main/cli"
+homepage = "https://oxigraph.org/cli/"
+description = "Oxigraph CLI tool and SPARQL HTTP server"
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "oxigraph"
+path = "src/main.rs"
+doc = false
+
+[features]
+default = ["native-tls", "geosparql", "rdf-12"]
+native-tls = ["oxigraph/http-client-native-tls"]
+rdf-12 = ["oxigraph/rdf-12"]
+rocksdb-pkg-config = ["oxigraph/rocksdb-pkg-config"]
+rustls-native = ["oxigraph/http-client-rustls-native"]
+rustls-webpki = ["oxigraph/http-client-rustls-webpki"]
+geosparql = ["dep:spargeo"]
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+flate2.workspace = true
+oxhttp = { workspace = true, features = ["flate2"] }
+oxigraph = { workspace = true, default-features = true }
+oxiri.workspace = true
+rand.workspace = true
+rayon-core.workspace = true
+spargeo = { workspace = true, optional = true }
+url.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+assert_fs.workspace = true
+predicates.workspace = true
+
+[build-dependencies]
+clap = { workspace = true, features = ["derive"] }
+clap_complete.workspace = true
+clap_mangen.workspace = true
+
+[lints]
+workspace = true

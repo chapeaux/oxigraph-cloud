@@ -1,0 +1,44 @@
+Oxigraph Cloud-Native has been deployed.
+
+Backend: {{ .Values.backend }}
+SHACL mode: {{ .Values.shacl.mode }}
+
+1. Get the SPARQL endpoint URL:
+{{- if .Values.route.enabled }}
+
+   The OpenShift Route is enabled. Get the URL with:
+
+     export OXIGRAPH_URL=$(oc get route {{ include "oxigraph-cloud.fullname" . }} -o jsonpath='{.spec.host}')
+     echo "SPARQL endpoint: https://${OXIGRAPH_URL}"
+
+{{- else }}
+
+   Port-forward to the service:
+
+     kubectl port-forward svc/{{ include "oxigraph-cloud.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+     echo "SPARQL endpoint: http://localhost:{{ .Values.service.port }}"
+
+{{- end }}
+
+2. Run a test query:
+
+     curl -s "${OXIGRAPH_URL:-http://localhost:{{ .Values.service.port }}}/query" \
+       -H "Accept: application/sparql-results+json" \
+       --data-urlencode "query=SELECT * WHERE { ?s ?p ?o } LIMIT 10"
+
+3. Insert some data:
+
+     curl -X POST "${OXIGRAPH_URL:-http://localhost:{{ .Values.service.port }}}/store" \
+       -H "Content-Type: text/turtle" \
+       -d '@prefix ex: <http://example.org/> . ex:subject ex:predicate "object" .'
+
+{{- if and .Values.shacl.mode (ne .Values.shacl.mode "off") }}
+
+4. SHACL validation is {{ .Values.shacl.mode }}. Upload shapes:
+
+     curl -X POST "${OXIGRAPH_URL:-http://localhost:{{ .Values.service.port }}}/shacl" \
+       -H "Content-Type: text/turtle" \
+       -d @shapes.ttl
+{{- end }}
+
+For more information, see: https://github.com/oxigraph/oxigraph

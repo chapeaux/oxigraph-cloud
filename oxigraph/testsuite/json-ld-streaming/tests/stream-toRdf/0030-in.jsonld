@@ -1,0 +1,28 @@
+{
+  "@context": {
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "knows": "http://xmlns.com/foaf/0.1/knows",
+    "name": "http://xmlns.com/foaf/0.1/name",
+    "asOf": "http://example.org/asOf"
+  },
+  "@id": "http://example.org/linked-data-graph",
+  "asOf": {"@type": "xsd:date", "@value": "2012-04-09"},
+  "@graph":
+  [
+    {
+      "@type": "foaf:Person",
+      "@id": "http://manu.sporny.org/i/public",
+      "name": "Manu Sporny",
+      "knows": "http://greggkellogg.net/foaf#me"
+    },
+    {
+      "@type": "foaf:Person",
+      "@id": "http://greggkellogg.net/foaf#me",
+      "name": "Gregg Kellogg",
+      "knows": "http://manu.sporny.org/i/public"
+    },
+    {
+      "@id": "http://www.markus-lanthaler.com/"
+    }
+  ]
+}

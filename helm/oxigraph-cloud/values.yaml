@@ -1,0 +1,114 @@
+# =============================================================================
+# Oxigraph Cloud-Native — Default Values (Production)
+# =============================================================================
+
+# -- Number of Oxigraph replicas
+replicas: 1
+
+image:
+  repository: ghcr.io/oxigraph/oxigraph
+  tag: "0.5.6"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Storage backend: "rocksdb" (embedded) or "tikv" (distributed)
+backend: rocksdb
+
+# -- TiKV configuration (only used when backend=tikv)
+tikv:
+  # PD endpoints for the TiKV cluster
+  pdEndpoints: []
+  # Example:
+  #   - "pd0:2379"
+  #   - "pd1:2379"
+
+# -- SHACL validation mode: "off", "warn", or "enforce"
+shacl:
+  mode: "off"
+  # Shapes can be loaded via the REST API or pre-loaded from the ConfigMap
+  # Pre-loaded shapes file (optional, relative to ConfigMap mount)
+  shapesFile: ""
+
+# -- Resource requests and limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# -- Persistent storage for Oxigraph data (used with rocksdb backend)
+storage:
+  size: 10Gi
+  # storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+
+# -- Service configuration
+service:
+  type: ClusterIP
+  port: 7878
+
+# -- OpenShift Route (set enabled=true on OpenShift)
+route:
+  enabled: false
+  # host: oxigraph.apps.example.com
+  # tls:
+  #   termination: edge
+
+# -- Network policy (restricts ingress/egress to required communication)
+networkPolicy:
+  enabled: true
+
+# -- Prometheus monitoring
+monitoring:
+  enabled: false
+  # serviceMonitor:
+  #   interval: 30s
+
+# -- Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 0
+  fsGroup: 0
+
+# -- Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- TLS/mTLS for Oxigraph-to-TiKV communication (requires cert-manager)
+tls:
+  enabled: false
+  # certManager:
+  #   issuerName: letsencrypt-prod
+  #   issuerKind: ClusterIssuer
+  # To use a custom CA issuer instead of the auto-generated self-signed CA,
+  # set certManager.issuerName and issuerKind above and disable the
+  # self-signed issuer by setting selfSignedCA: false.
+  selfSignedCA: true
+  # Certificate duration and renewal (Go duration format)
+  duration: 8760h      # 1 year
+  renewBefore: 720h    # 30 days
+
+# -- Node selector, tolerations, affinity
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Extra environment variables
+extraEnv: []
+
+# -- Extra labels applied to all resources
+extraLabels: {}

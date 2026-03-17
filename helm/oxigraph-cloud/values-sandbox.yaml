@@ -1,0 +1,26 @@
+# =============================================================================
+# Oxigraph Cloud-Native — Developer Sandbox Overlay
+# =============================================================================
+#
+# Usage:
+#   helm install oxigraph ./helm/oxigraph-cloud -f ./helm/oxigraph-cloud/values-sandbox.yaml
+#
+# Designed for Red Hat Developer Sandbox with constrained resources.
+# Uses RocksDB backend (TiKV is too resource-heavy for sandbox environments).
+# =============================================================================
+
+backend: rocksdb
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+storage:
+  size: 1Gi
+
+route:
+  enabled: true

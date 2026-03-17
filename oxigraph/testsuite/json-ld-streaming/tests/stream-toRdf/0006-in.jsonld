@@ -1,0 +1,7 @@
+{
+  "@id":  "http://greggkellogg.net/foaf#me",
+  "http://purl.org/dc/terms/created":  {
+    "@type": "http://www.w3.org/2001/XMLSchema#date",
+    "@value": "1957-02-27"
+  }
+}

@@ -1,0 +1,53 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "oxigraph-cloud.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow SPARQL endpoint access from within the namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 7878
+    {{- if .Values.route.enabled }}
+    # Allow traffic from OpenShift router
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - protocol: TCP
+          port: 7878
+    {{- end }}
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if eq .Values.backend "tikv" }}
+    # Allow TiKV PD and store communication
+    - to:
+        - podSelector:
+            matchLabels:
+              app: tikv
+      ports:
+        - protocol: TCP
+          port: 2379
+        - protocol: TCP
+          port: 20160
+    {{- end }}
+{{- end }}
