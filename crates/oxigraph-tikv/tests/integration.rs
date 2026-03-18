@@ -39,8 +39,8 @@ mod helpers {
 
     /// Read the TiKV PD endpoints from the environment, falling back to localhost.
     pub fn pd_endpoints() -> Vec<String> {
-        let raw = std::env::var("TIKV_PD_ENDPOINTS")
-            .unwrap_or_else(|_| "127.0.0.1:2379".to_string());
+        let raw =
+            std::env::var("TIKV_PD_ENDPOINTS").unwrap_or_else(|_| "127.0.0.1:2379".to_string());
         raw.split(',').map(|s| s.trim().to_string()).collect()
     }
 
@@ -188,11 +188,7 @@ fn test_sparql_insert_and_select() {
             "\"Alice\"",
             "First result should be Alice"
         );
-        assert_eq!(
-            name1.to_string(),
-            "\"Bob\"",
-            "Second result should be Bob"
-        );
+        assert_eq!(name1.to_string(), "\"Bob\"", "Second result should be Bob");
     } else {
         panic!("Expected QueryResults::Solutions");
     }
@@ -266,7 +262,10 @@ fn test_named_graph_operations() {
         }}"#
     );
     let count_all = sparql_count(&store, &query_all);
-    assert_eq!(count_all, 3, "All named graphs should contain 3 triples total");
+    assert_eq!(
+        count_all, 3,
+        "All named graphs should contain 3 triples total"
+    );
 }
 
 /// Bulk load quads via the Store API and verify via SPARQL.
@@ -377,9 +376,7 @@ fn test_transaction_rollback() {
     }
 
     // Verify baseline is still there.
-    let baseline_query = format!(
-        r#"SELECT ?val WHERE {{ <{ns}baseline> <{ns}exists> ?val . }}"#
-    );
+    let baseline_query = format!(r#"SELECT ?val WHERE {{ <{ns}baseline> <{ns}exists> ?val . }}"#);
     let results = SparqlEvaluator::new()
         .parse_query(&baseline_query)
         .unwrap()
@@ -389,7 +386,11 @@ fn test_transaction_rollback() {
 
     if let QueryResults::Solutions(solutions) = results {
         let rows: Vec<_> = solutions.collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(rows.len(), 1, "Baseline triple should still exist after rollback");
+        assert_eq!(
+            rows.len(),
+            1,
+            "Baseline triple should still exist after rollback"
+        );
     } else {
         panic!("Expected Solutions");
     }
@@ -525,8 +526,7 @@ fn test_concurrent_reads() {
                         .unwrap();
 
                     if let QueryResults::Solutions(solutions) = results {
-                        let rows: Vec<_> =
-                            solutions.collect::<Result<Vec<_>, _>>().unwrap();
+                        let rows: Vec<_> = solutions.collect::<Result<Vec<_>, _>>().unwrap();
                         if rows.len() != 1 {
                             eprintln!(
                                 "Thread {thread_id}: point query returned {} rows",
@@ -574,7 +574,10 @@ fn test_graph_drop_and_clear() {
         }}"#
     );
     let count = sparql_count(&store, &count_query);
-    assert_eq!(count, 0, "CLEAR GRAPH should remove all triples from the graph");
+    assert_eq!(
+        count, 0,
+        "CLEAR GRAPH should remove all triples from the graph"
+    );
 
     // Re-insert and then DROP the graph entirely.
     helpers::sparql_update(&store, &insert);

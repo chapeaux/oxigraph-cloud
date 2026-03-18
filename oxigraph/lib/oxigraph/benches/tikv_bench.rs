@@ -127,7 +127,8 @@ fn bench_point_query(c: &mut Criterion) {
     let mut group = c.benchmark_group("point_query_latency");
     group.sample_size(50);
 
-    let sparql = "SELECT ?o WHERE { <http://bench.example.com/point/s42> <http://bench.example.com/p> ?o }";
+    let sparql =
+        "SELECT ?o WHERE { <http://bench.example.com/point/s42> <http://bench.example.com/p> ?o }";
 
     // RocksDB
     {

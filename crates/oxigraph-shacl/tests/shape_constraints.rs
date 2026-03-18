@@ -1,4 +1,5 @@
 //! Tests for specific SHACL constraint types.
+#![expect(clippy::tests_outside_test_module)]
 
 use oxigraph::io::RdfFormat;
 use oxigraph::store::Store;
@@ -19,12 +20,12 @@ fn validate(shapes_turtle: &str, data_turtle: &str) -> ValidationOutcome {
 
 #[test]
 fn cardinality_min_count() {
-    let shapes = r#"
+    let shapes = "
         @prefix sh: <http://www.w3.org/ns/shacl#> .
         @prefix ex: <http://example.org/> .
         ex:S a sh:NodeShape ; sh:targetClass ex:T ;
             sh:property [ sh:path ex:p ; sh:minCount 2 ] .
-    "#;
+    ";
     // Only 1 value — should fail
     let data = r#"
         @prefix ex: <http://example.org/> .
@@ -35,12 +36,12 @@ fn cardinality_min_count() {
 
 #[test]
 fn cardinality_max_count() {
-    let shapes = r#"
+    let shapes = "
         @prefix sh: <http://www.w3.org/ns/shacl#> .
         @prefix ex: <http://example.org/> .
         ex:S a sh:NodeShape ; sh:targetClass ex:T ;
             sh:property [ sh:path ex:p ; sh:maxCount 1 ] .
-    "#;
+    ";
     // 2 values — should fail
     let data = r#"
         @prefix ex: <http://example.org/> .
@@ -51,13 +52,13 @@ fn cardinality_max_count() {
 
 #[test]
 fn datatype_constraint() {
-    let shapes = r#"
+    let shapes = "
         @prefix sh: <http://www.w3.org/ns/shacl#> .
         @prefix ex: <http://example.org/> .
         @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
         ex:S a sh:NodeShape ; sh:targetClass ex:T ;
             sh:property [ sh:path ex:age ; sh:datatype xsd:integer ] .
-    "#;
+    ";
     // String instead of integer — should fail
     let data = r#"
         @prefix ex: <http://example.org/> .
@@ -68,16 +69,16 @@ fn datatype_constraint() {
 
 #[test]
 fn class_constraint_pass() {
-    let shapes = r#"
+    let shapes = "
         @prefix sh: <http://www.w3.org/ns/shacl#> .
         @prefix ex: <http://example.org/> .
         ex:S a sh:NodeShape ; sh:targetClass ex:T ;
             sh:property [ sh:path ex:ref ; sh:class ex:Other ] .
-    "#;
-    let data = r#"
+    ";
+    let data = "
         @prefix ex: <http://example.org/> .
         ex:x a ex:T ; ex:ref ex:y .
         ex:y a ex:Other .
-    "#;
+    ";
     assert!(validate(shapes, data).is_passed());
 }

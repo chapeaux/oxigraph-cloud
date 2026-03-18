@@ -22,10 +22,10 @@ use std::path::Path;
 #[cfg(not(target_family = "wasm"))]
 use std::{io, thread};
 
-pub mod backend_trait;
 #[cfg(test)]
 #[path = "backend_tests.rs"]
 mod backend_tests;
+pub mod backend_trait;
 #[cfg(all(
     not(target_family = "wasm"),
     any(feature = "rocksdb", feature = "tikv")
@@ -38,10 +38,10 @@ pub mod numeric_encoder;
 mod rocksdb;
 #[cfg(all(not(target_family = "wasm"), feature = "rocksdb"))]
 mod rocksdb_wrapper;
+pub mod small_string;
 #[cfg(all(not(target_family = "wasm"), feature = "tikv"))]
 #[expect(let_underscore_drop)]
 mod tikv;
-pub mod small_string;
 
 pub const DEFAULT_BULK_LOAD_BATCH_SIZE: usize = 1_000_000;
 
@@ -456,9 +456,7 @@ impl StorageTransaction<'_> {
                 transaction.insert_named_graph(graph_name)
             }
             #[cfg(all(not(target_family = "wasm"), feature = "tikv"))]
-            StorageTransactionKind::TiKv(transaction) => {
-                transaction.insert_named_graph(graph_name)
-            }
+            StorageTransactionKind::TiKv(transaction) => transaction.insert_named_graph(graph_name),
             StorageTransactionKind::Memory(transaction) => {
                 transaction.insert_named_graph(graph_name);
             }

@@ -14,17 +14,25 @@ impl BloomFilter {
     pub fn new(expected_elements: usize, fp_rate: f64) -> Self {
         let num_bits = optimal_num_bits(expected_elements, fp_rate);
         let num_hashes = optimal_num_hashes(expected_elements, num_bits);
-        Self { bits: vec![0; (num_bits + 7) / 8], num_bits, num_hashes }
+        Self {
+            bits: vec![0; num_bits.div_ceil(8)],
+            num_bits,
+            num_hashes,
+        }
     }
 
     pub fn from_bytes(bytes: Vec<u8>, num_hashes: u8) -> Self {
         let num_bits = bytes.len() * 8;
-        Self { bits: bytes, num_bits, num_hashes }
+        Self {
+            bits: bytes,
+            num_bits,
+            num_hashes,
+        }
     }
 
     pub fn insert(&mut self, key: &[u8]) {
         let (h1, h2) = hash_pair(key);
-        for i in 0..self.num_hashes as usize {
+        for i in 0..usize::from(self.num_hashes) {
             let bit_pos = (h1.wrapping_add(i.wrapping_mul(h2))) % self.num_bits;
             self.bits[bit_pos / 8] |= 1 << (bit_pos % 8);
         }
@@ -32,15 +40,21 @@ impl BloomFilter {
 
     pub fn may_contain(&self, key: &[u8]) -> bool {
         let (h1, h2) = hash_pair(key);
-        for i in 0..self.num_hashes as usize {
+        for i in 0..usize::from(self.num_hashes) {
             let bit_pos = (h1.wrapping_add(i.wrapping_mul(h2))) % self.num_bits;
-            if self.bits[bit_pos / 8] & (1 << (bit_pos % 8)) == 0 { return false; }
+            if self.bits[bit_pos / 8] & (1 << (bit_pos % 8)) == 0 {
+                return false;
+            }
         }
         true
     }
 
-    pub fn to_bytes(&self) -> &[u8] { &self.bits }
-    pub fn num_hashes(&self) -> u8 { self.num_hashes }
+    pub fn to_bytes(&self) -> &[u8] {
+        &self.bits
+    }
+    pub fn num_hashes(&self) -> u8 {
+        self.num_hashes
+    }
 }
 
 fn hash_pair(key: &[u8]) -> (usize, usize) {
@@ -48,15 +62,29 @@ fn hash_pair(key: &[u8]) -> (usize, usize) {
     key.hash(&mut h1);
     let mut h2 = SipHasher::new_with_keys(1, 1);
     key.hash(&mut h2);
-    (h1.finish() as usize, h2.finish() as usize)
+    #[expect(clippy::cast_possible_truncation)]
+    let pair = (h1.finish() as usize, h2.finish() as usize);
+    pair
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
 fn optimal_num_bits(n: usize, fp: f64) -> usize {
     (-(n as f64 * fp.ln()) / (2.0_f64.ln().powi(2))).ceil() as usize
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
 fn optimal_num_hashes(n: usize, m: usize) -> u8 {
-    ((m as f64 / n as f64) * 2.0_f64.ln()).ceil().max(1.0).min(16.0) as u8
+    ((m as f64 / n as f64) * 2.0_f64.ln())
+        .ceil()
+        .clamp(1.0, 16.0) as u8
 }
 
 #[cfg(test)]
@@ -86,11 +114,15 @@ mod tests {
     fn test_bloom_fp_rate() {
         let n = 1000;
         let mut bf = BloomFilter::new(n, 0.01);
-        for i in 0..n { bf.insert(format!("key-{i}").as_bytes()); }
+        for i in 0..n {
+            bf.insert(format!("key-{i}").as_bytes());
+        }
         let mut fps = 0;
         for i in n..n + 10000 {
-            if bf.may_contain(format!("other-{i}").as_bytes()) { fps += 1; }
+            if bf.may_contain(format!("other-{i}").as_bytes()) {
+                fps += 1;
+            }
         }
-        assert!((fps as f64 / 10000.0) < 0.03);
+        assert!((f64::from(fps) / 10000.0) < 0.03);
     }
 }

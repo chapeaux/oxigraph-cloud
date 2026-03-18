@@ -88,10 +88,7 @@ fn bulk_load_10k(c: &mut Criterion) {
             |store| {
                 let mut loader = store.bulk_loader();
                 loader
-                    .load_from_slice(
-                        RdfParser::from_format(RdfFormat::NTriples).lenient(),
-                        &data,
-                    )
+                    .load_from_slice(RdfParser::from_format(RdfFormat::NTriples).lenient(), &data)
                     .expect("bulk load failed");
                 loader.commit().expect("commit failed");
             },
@@ -103,8 +100,7 @@ fn bulk_load_10k(c: &mut Criterion) {
 /// Point query: look up a specific triple by subject in a 10 000-triple store.
 fn point_query(c: &mut Criterion) {
     let store = populated_store(10_000);
-    let subject =
-        NamedNodeRef::new("http://example.org/s5000").expect("invalid IRI");
+    let subject = NamedNodeRef::new("http://example.org/s5000").expect("invalid IRI");
     c.bench_function("point_query", |b| {
         b.iter(|| {
             let count = store
@@ -126,12 +122,7 @@ fn range_scan(c: &mut Criterion) {
     c.bench_function("range_scan", |b| {
         b.iter(|| {
             let results: Vec<_> = store
-                .quads_for_pattern(
-                    None,
-                    None,
-                    None,
-                    Some(GraphNameRef::DefaultGraph),
-                )
+                .quads_for_pattern(None, None, None, Some(GraphNameRef::DefaultGraph))
                 .take(100)
                 .collect();
             assert_eq!(results.len(), 100, "expected 100 results");
@@ -221,8 +212,7 @@ ex:PersonShape
         sh:datatype xsd:integer ;
     ] .
 "#;
-    let shapes =
-        CompiledShapes::from_turtle(shapes_turtle).expect("failed to compile shapes");
+    let shapes = CompiledShapes::from_turtle(shapes_turtle).expect("failed to compile shapes");
 
     c.bench_function("shacl_validation", |b| {
         b.iter_with_setup(
@@ -233,10 +223,7 @@ ex:PersonShape
             },
             |validator| {
                 let outcome = validator.validate(&store).expect("validation failed");
-                assert!(
-                    outcome.is_passed(),
-                    "expected validation to pass"
-                );
+                assert!(outcome.is_passed(), "expected validation to pass");
             },
         );
     });

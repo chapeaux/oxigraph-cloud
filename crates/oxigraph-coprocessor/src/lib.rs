@@ -74,49 +74,26 @@ pub fn encoded_term_len(data: &[u8]) -> Result<usize, &'static str> {
         return Err("empty term data");
     }
     let total = match data[0] {
-        // NamedNode: 1 type + 16 hash
-        1 => 17,
-        // NumericalBlankNode: 1 type + 16 id
-        8 => 17,
-        // SmallBlankNode: 1 type + 16 small_string
-        9 => 17,
-        // BigBlankNode: 1 type + 16 hash
-        10 => 17,
-        // SmallStringLiteral: 1 type + 16 small_string
-        16 => 17,
-        // BigStringLiteral: 1 type + 16 hash
-        17 => 17,
-        // SmallSmallLangStringLiteral: 1 type + 16 lang + 16 value
-        20 => 33,
-        // SmallBigLangStringLiteral: 1 type + 16 lang_hash + 16 value
-        21 => 33,
-        // BigSmallLangStringLiteral: 1 type + 16 lang + 16 value_hash
-        22 => 33,
-        // BigBigLangStringLiteral: 1 type + 16 lang_hash + 16 value_hash
-        23 => 33,
-        // SmallTypedLiteral: 1 type + 16 datatype_hash + 16 value
-        24 => 33,
-        // BigTypedLiteral: 1 type + 16 datatype_hash + 16 value_hash
-        25 => 33,
+        // NamedNode, NumericalBlankNode, SmallBlankNode, BigBlankNode,
+        // SmallStringLiteral, BigStringLiteral, DecimalLiteral, DayTimeDuration:
+        // 1 type + 16 bytes
+        1 | 8 | 9 | 10 | 16 | 17 | 33 | 44 => 17,
+        // SmallSmallLangStringLiteral, SmallBigLangStringLiteral,
+        // BigSmallLangStringLiteral, BigBigLangStringLiteral,
+        // SmallTypedLiteral, BigTypedLiteral, RDF-12 directional lang strings:
+        // 1 type + 16 + 16
+        20 | 21 | 22 | 23 | 24 | 25 | 56..=63 => 33,
         // BooleanLiteral true/false: 1 type only
         28 | 29 => 1,
         // FloatLiteral: 1 type + 4 float
         30 => 5,
-        // DoubleLiteral: 1 type + 8 double
-        31 => 9,
-        // IntegerLiteral: 1 type + 8 i64
-        32 => 9,
-        // DecimalLiteral: 1 type + 16 decimal
-        33 => 17,
+        // DoubleLiteral, IntegerLiteral, YearMonthDuration: 1 type + 8
+        31 | 32 | 43 => 9,
         // DateTime, Time, Date, GYearMonth, GYear, GMonthDay, GDay, GMonth:
         // 1 type + 18 value
         34..=41 => 19,
         // DurationLiteral: 1 type + 24 value
         42 => 25,
-        // YearMonthDuration: 1 type + 8 value
-        43 => 9,
-        // DayTimeDuration: 1 type + 16 value
-        44 => 17,
         // Triple/StarTriple: 1 type + 3 recursive terms
         48 | 49 => {
             let mut offset = 1;
@@ -126,8 +103,6 @@ pub fn encoded_term_len(data: &[u8]) -> Result<usize, &'static str> {
             }
             offset
         }
-        // RDF-12 directional lang string literals: 1 type + 16 + 16
-        56..=63 => 33,
         _ => return Err("unknown term type byte"),
     };
     Ok(total)
@@ -159,7 +134,8 @@ pub fn extract_term_bytes(key: &[u8], position: usize) -> Result<&[u8], &'static
 pub fn extract_concat_term_bytes(key: &[u8], positions: &[u32]) -> Result<Vec<u8>, &'static str> {
     let mut result = Vec::new();
     for &pos in positions {
-        let term_bytes = extract_term_bytes(key, pos as usize)?;
+        let term_bytes =
+            extract_term_bytes(key, usize::try_from(pos).map_err(|_| "position overflow")?)?;
         result.extend_from_slice(term_bytes);
     }
     Ok(result)
@@ -197,10 +173,7 @@ impl CoprocessorPlugin for OxigraphCoprocessorPlugin {
         storage: &dyn RawStorage,
     ) -> PluginResult<RawResponse> {
         let req = decode_request(&request).map_err(|e| {
-            PluginError::Other(
-                format!("failed to decode request: {e}"),
-                Box::new(()),
-            )
+            PluginError::Other(format!("failed to decode request: {e}"), Box::new(()))
         })?;
 
         // Collect all KV pairs from the requested ranges via RawStorage.
@@ -266,7 +239,7 @@ impl CoprocessorPlugin for OxigraphCoprocessorPlugin {
     }
 }
 
-declare_plugin!(OxigraphCoprocessorPlugin::default());
+declare_plugin!(OxigraphCoprocessorPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -275,8 +248,8 @@ mod tests {
     #[test]
     fn term_len_named_node() {
         // Type byte 1 (NamedNode) followed by 16 bytes of hash
-        let mut data = vec![1u8];
-        data.extend_from_slice(&[0u8; 16]);
+        let mut data = vec![1_u8];
+        data.extend_from_slice(&[0_u8; 16]);
         assert_eq!(encoded_term_len(&data), Ok(17));
     }
 
@@ -288,8 +261,8 @@ mod tests {
 
     #[test]
     fn term_len_integer() {
-        let mut data = vec![32u8];
-        data.extend_from_slice(&[0u8; 8]);
+        let mut data = vec![32_u8];
+        data.extend_from_slice(&[0_u8; 8]);
         assert_eq!(encoded_term_len(&data), Ok(9));
     }
 
@@ -316,22 +289,22 @@ mod tests {
         key.push(32);
         key.extend_from_slice(&[0xBB; 8]);
 
-        let term0 = extract_term_bytes(&key, 0).expect("term 0");
+        let term0 = extract_term_bytes(&key, 0).unwrap();
         assert_eq!(term0.len(), 17);
         assert_eq!(term0[0], 1);
 
-        let term1 = extract_term_bytes(&key, 1).expect("term 1");
+        let term1 = extract_term_bytes(&key, 1).unwrap();
         assert_eq!(term1, &[28]);
 
-        let term2 = extract_term_bytes(&key, 2).expect("term 2");
+        let term2 = extract_term_bytes(&key, 2).unwrap();
         assert_eq!(term2.len(), 9);
         assert_eq!(term2[0], 32);
     }
 
     #[test]
     fn extract_term_out_of_bounds() {
-        let key = vec![28u8]; // Single boolean term
-        assert!(extract_term_bytes(&key, 1).is_err());
+        let key = vec![28_u8]; // Single boolean term
+        extract_term_bytes(&key, 1).unwrap_err();
     }
 
     #[test]
@@ -345,7 +318,7 @@ mod tests {
         key.push(1);
         key.extend_from_slice(&[0xCC; 16]);
 
-        let concat = extract_concat_term_bytes(&key, &[0, 2]).expect("concat");
+        let concat = extract_concat_term_bytes(&key, &[0, 2]).unwrap();
         // Should be term0 (1 byte) + term2 (17 bytes) = 18 bytes
         assert_eq!(concat.len(), 18);
         assert_eq!(concat[0], 28);

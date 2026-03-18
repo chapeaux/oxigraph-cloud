@@ -11,9 +11,7 @@ use crate::storage::binary_encoder::{
     write_spog_quad, write_term,
 };
 pub use crate::storage::error::{CorruptionError, StorageError};
-use crate::storage::numeric_encoder::{
-    EncodedQuad, EncodedTerm, StrHash, StrLookup, insert_term,
-};
+use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm, StrHash, StrLookup, insert_term};
 use oxrdf::Quad;
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -170,12 +168,7 @@ impl TiKvStorage {
             None => {
                 self.inner
                     .runtime
-                    .block_on(
-                        txn.put(
-                            version_key,
-                            LATEST_STORAGE_VERSION.to_be_bytes().to_vec(),
-                        ),
-                    )
+                    .block_on(txn.put(version_key, LATEST_STORAGE_VERSION.to_be_bytes().to_vec()))
                     .map_err(map_tikv_error)?;
                 self.inner
                     .runtime
@@ -388,10 +381,8 @@ impl<'a> TiKvStorageReader<'a> {
         // Issue both initial batch fetches in parallel via tokio::join!
         let result = self.storage.inner.runtime.block_on(async {
             let client = &self.storage.inner.client;
-            let (dspo_txn_res, gspo_txn_res) = tokio::join!(
-                client.begin_optimistic(),
-                client.begin_optimistic()
-            );
+            let (dspo_txn_res, gspo_txn_res) =
+                tokio::join!(client.begin_optimistic(), client.begin_optimistic());
             let (dspo_txn, gspo_txn) = (dspo_txn_res?, gspo_txn_res?);
             let (mut dspo_txn, mut gspo_txn) = (dspo_txn, gspo_txn);
             let (dspo_scan, gspo_scan) = tokio::join!(
@@ -409,17 +400,23 @@ impl<'a> TiKvStorageReader<'a> {
                 let dspo_exhausted = dspo_pairs.len() < batch_size;
                 let gspo_exhausted = gspo_pairs.len() < batch_size;
 
-                let dspo_next_start = dspo_pairs.last().map(|p| {
-                    let mut k: Vec<u8> = p.0.clone().into();
-                    k.push(0x00);
-                    k
-                }).unwrap_or_else(|| dspo_prefix.clone());
+                let dspo_next_start = dspo_pairs
+                    .last()
+                    .map(|p| {
+                        let mut k: Vec<u8> = p.0.clone().into();
+                        k.push(0x00);
+                        k
+                    })
+                    .unwrap_or_else(|| dspo_prefix.clone());
 
-                let gspo_next_start = gspo_pairs.last().map(|p| {
-                    let mut k: Vec<u8> = p.0.clone().into();
-                    k.push(0x00);
-                    k
-                }).unwrap_or_else(|| gspo_prefix.clone());
+                let gspo_next_start = gspo_pairs
+                    .last()
+                    .map(|p| {
+                        let mut k: Vec<u8> = p.0.clone().into();
+                        k.push(0x00);
+                        k
+                    })
+                    .unwrap_or_else(|| gspo_prefix.clone());
 
                 let dspo_buffer: Vec<Result<EncodedQuad, StorageError>> = dspo_pairs
                     .into_iter()
@@ -644,9 +641,7 @@ impl<'a> TiKvStorageReader<'a> {
     }
 
     pub fn named_graphs(&self) -> TiKvDecodingGraphIterator {
-        let pairs = self
-            .scan_prefix(TABLE_GRAPHS, &[])
-            .unwrap_or_default();
+        let pairs = self.scan_prefix(TABLE_GRAPHS, &[]).unwrap_or_default();
         TiKvDecodingGraphIterator {
             pairs: pairs.into_iter(),
         }
@@ -817,9 +812,7 @@ impl<'a> TiKvStorageReader<'a> {
 impl StrLookup for TiKvStorageReader<'_> {
     fn get_str(&self, key: &StrHash) -> Result<Option<String>, StorageError> {
         match self.get_value(TABLE_ID2STR, &key.to_be_bytes())? {
-            Some(v) => Ok(Some(
-                String::from_utf8(v).map_err(CorruptionError::new)?,
-            )),
+            Some(v) => Ok(Some(String::from_utf8(v).map_err(CorruptionError::new)?)),
             None => Ok(None),
         }
     }
@@ -966,10 +959,7 @@ impl TiKvDecodingQuadIterator {
         }
     }
 
-    fn pair(
-        first: TiKvPrefetchQuadIterator,
-        second: TiKvPrefetchQuadIterator,
-    ) -> Self {
+    fn pair(first: TiKvPrefetchQuadIterator, second: TiKvPrefetchQuadIterator) -> Self {
         Self {
             first,
             second: Some(second),
@@ -1094,7 +1084,10 @@ impl TiKvStorageTransaction<'_> {
         let full_key = prefixed_key(TABLE_ID2STR, &key.to_be_bytes());
         // Best effort — errors on individual puts are deferred to commit
         let _ = self.storage.runtime().block_on(
-            self.txn.as_mut().unwrap().put(full_key, value.as_bytes().to_vec()),
+            self.txn
+                .as_mut()
+                .unwrap()
+                .put(full_key, value.as_bytes().to_vec()),
         );
     }
 
@@ -1207,7 +1200,10 @@ impl TiKvStorageTransaction<'_> {
         if let Ok(keys) = keys {
             let keys: Vec<Key> = keys.collect();
             for key in keys {
-                let _ = self.storage.runtime().block_on(self.txn.as_mut().unwrap().delete(key));
+                let _ = self
+                    .storage
+                    .runtime()
+                    .block_on(self.txn.as_mut().unwrap().delete(key));
             }
         }
     }
@@ -1315,7 +1311,11 @@ impl TiKvStorageReadableTransaction<'_> {
     fn insert_str(&mut self, key: &StrHash, value: &str) {
         let full_key = prefixed_key(TABLE_ID2STR, &key.to_be_bytes());
         let _ = self.storage.runtime().block_on(
-            self.txn.as_ref().unwrap().borrow_mut().put(full_key, value.as_bytes().to_vec()),
+            self.txn
+                .as_ref()
+                .unwrap()
+                .borrow_mut()
+                .put(full_key, value.as_bytes().to_vec()),
         );
     }
 
@@ -1451,10 +1451,13 @@ impl TiKvStorageReadableTransaction<'_> {
 
     fn put_empty(&mut self, table: u8, key: &[u8]) {
         let full_key = prefixed_key(table, key);
-        let _ = self
-            .storage
-            .runtime()
-            .block_on(self.txn.as_ref().unwrap().borrow_mut().put(full_key, vec![]));
+        let _ = self.storage.runtime().block_on(
+            self.txn
+                .as_ref()
+                .unwrap()
+                .borrow_mut()
+                .put(full_key, vec![]),
+        );
     }
 
     fn delete_key(&mut self, table: u8, key: &[u8]) {
@@ -1469,7 +1472,10 @@ impl TiKvStorageReadableTransaction<'_> {
 impl Drop for TiKvStorageReadableTransaction<'_> {
     fn drop(&mut self) {
         if let Some(cell) = self.txn.take() {
-            let _ = self.storage.runtime().block_on(cell.into_inner().rollback());
+            let _ = self
+                .storage
+                .runtime()
+                .block_on(cell.into_inner().rollback());
         }
     }
 }

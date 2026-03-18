@@ -1,5 +1,3 @@
-#![allow(clippy::print_stderr)]
-
 use clap::Parser;
 use oxhttp::Server;
 use oxhttp::model::header::{
@@ -126,11 +124,14 @@ fn main() -> anyhow::Result<()> {
 
     let store = match args.backend.as_str() {
         "rocksdb" => {
-            if let Some(ref location) = args.location {
+            if let Some(location) = &args.location {
                 tracing::info!(backend = "rocksdb", path = %location, "Opening RocksDB store");
                 Store::open(location)?
             } else {
-                tracing::info!(backend = "rocksdb", "Opening in-memory store (no --location given)");
+                tracing::info!(
+                    backend = "rocksdb",
+                    "Opening in-memory store (no --location given)"
+                );
                 Store::new()?
             }
         }
@@ -173,41 +174,70 @@ fn main() -> anyhow::Result<()> {
     };
 
     #[cfg(feature = "shacl")]
-    return serve(store, &args.bind, cors_origins, query_timeout, max_upload_size, write_key, validator);
+    return serve(
+        store,
+        &args.bind,
+        &cors_origins,
+        query_timeout,
+        max_upload_size,
+        write_key,
+        &validator,
+    );
 
     #[cfg(not(feature = "shacl"))]
-    serve(store, &args.bind, cors_origins, query_timeout, max_upload_size, write_key)
+    serve(
+        store,
+        &args.bind,
+        &cors_origins,
+        query_timeout,
+        max_upload_size,
+        write_key,
+    )
 }
 
 #[cfg(feature = "shacl")]
 fn serve(
     store: Store,
     bind: &str,
-    cors_origins: String,
+    cors_origins: &str,
     query_timeout: Duration,
     max_upload_size: u64,
     write_key: Option<String>,
-    validator: Arc<Mutex<ShaclValidator>>,
+    validator: &Arc<Mutex<ShaclValidator>>,
 ) -> anyhow::Result<()> {
     let write_key = Arc::new(write_key);
-    let mut server = if !cors_origins.is_empty() {
-        let v = Arc::clone(&validator);
+    let mut server = if cors_origins.is_empty() {
+        let v = Arc::clone(validator);
         let wk = Arc::clone(&write_key);
-        let origins = cors_origins.clone();
+        Server::new(move |request| {
+            handle_request(
+                request,
+                store.clone(),
+                &v,
+                query_timeout,
+                max_upload_size,
+                &wk,
+            )
+            .unwrap_or_else(|(status, message)| error(status, message))
+        })
+    } else {
+        let v = Arc::clone(validator);
+        let wk = Arc::clone(&write_key);
+        let origins = cors_origins.to_owned();
         Server::new(cors_middleware(
             move |request| {
-                handle_request(request, store.clone(), Arc::clone(&v), query_timeout, max_upload_size, &wk)
-                    .unwrap_or_else(|(status, message)| error(status, message))
+                handle_request(
+                    request,
+                    store.clone(),
+                    &v,
+                    query_timeout,
+                    max_upload_size,
+                    &wk,
+                )
+                .unwrap_or_else(|(status, message)| error(status, message))
             },
             origins,
         ))
-    } else {
-        let v = Arc::clone(&validator);
-        let wk = Arc::clone(&write_key);
-        Server::new(move |request| {
-            handle_request(request, store.clone(), Arc::clone(&v), query_timeout, max_upload_size, &wk)
-                .unwrap_or_else(|(status, message)| error(status, message))
-        })
     }
     .with_global_timeout(HTTP_TIMEOUT)
     .with_server_name(concat!("OxigraphCloud/", env!("CARGO_PKG_VERSION")))?
@@ -223,11 +253,24 @@ fn serve(
 }
 
 #[cfg(not(feature = "shacl"))]
-fn serve(store: Store, bind: &str, cors_origins: String, query_timeout: Duration, max_upload_size: u64, write_key: Option<String>) -> anyhow::Result<()> {
+fn serve(
+    store: Store,
+    bind: &str,
+    cors_origins: &str,
+    query_timeout: Duration,
+    max_upload_size: u64,
+    write_key: Option<String>,
+) -> anyhow::Result<()> {
     let write_key = Arc::new(write_key);
-    let mut server = if !cors_origins.is_empty() {
+    let mut server = if cors_origins.is_empty() {
         let wk = Arc::clone(&write_key);
-        let origins = cors_origins.clone();
+        Server::new(move |request| {
+            handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
+                .unwrap_or_else(|(status, message)| error(status, message))
+        })
+    } else {
+        let wk = Arc::clone(&write_key);
+        let origins = cors_origins.to_owned();
         Server::new(cors_middleware(
             move |request| {
                 handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
@@ -235,12 +278,6 @@ fn serve(store: Store, bind: &str, cors_origins: String, query_timeout: Duration
             },
             origins,
         ))
-    } else {
-        let wk = Arc::clone(&write_key);
-        Server::new(move |request| {
-            handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
-                .unwrap_or_else(|(status, message)| error(status, message))
-        })
     }
     .with_global_timeout(HTTP_TIMEOUT)
     .with_server_name(concat!("OxigraphCloud/", env!("CARGO_PKG_VERSION")))?
@@ -271,16 +308,14 @@ fn cors_middleware(
             .headers()
             .get(ORIGIN)
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_owned());
+            .map(ToOwned::to_owned);
 
         let allowed_value = origin_header.as_deref().and_then(|origin| {
             if allowed_origins == "*" {
                 Some(HeaderValue::from_static("*"))
             } else {
                 // Check if request origin is in the comma-separated allow-list
-                let is_allowed = allowed_origins
-                    .split(',')
-                    .any(|o| o.trim() == origin);
+                let is_allowed = allowed_origins.split(',').any(|o| o.trim() == origin);
                 if is_allowed {
                     HeaderValue::try_from(origin).ok()
                 } else {
@@ -292,10 +327,8 @@ fn cors_middleware(
         if *request.method() == Method::OPTIONS {
             let mut response = Response::builder().status(StatusCode::NO_CONTENT);
             if let Some(allow_origin) = &allowed_value {
-                response = response.header(
-                    ACCESS_CONTROL_ALLOW_ORIGIN.clone(),
-                    allow_origin.clone(),
-                );
+                response =
+                    response.header(ACCESS_CONTROL_ALLOW_ORIGIN.clone(), allow_origin.clone());
             }
             let headers = request.headers();
             if let Some(method) = headers.get(ACCESS_CONTROL_REQUEST_METHOD) {
@@ -327,7 +360,7 @@ type HttpError = (StatusCode, String);
 fn handle_request(
     request: &mut Request<Body>,
     store: Store,
-    validator: Arc<Mutex<ShaclValidator>>,
+    validator: &Arc<Mutex<ShaclValidator>>,
     query_timeout: Duration,
     max_upload_size: u64,
     write_key: &Option<String>,
@@ -341,31 +374,30 @@ fn handle_request(
         ("/shacl/shapes", "POST") => {
             check_write_auth(request, write_key)?;
             tracing::info!("SHACL shapes upload");
-            handle_shacl_upload_shapes(request, &validator)
+            handle_shacl_upload_shapes(request, validator)
         }
-        ("/shacl/shapes", "GET") => handle_shacl_get_shapes(&validator),
+        ("/shacl/shapes", "GET") => handle_shacl_get_shapes(validator),
         ("/shacl/shapes", "DELETE") => {
             check_write_auth(request, write_key)?;
             tracing::info!("SHACL shapes delete");
-            handle_shacl_delete_shapes(&validator)
+            handle_shacl_delete_shapes(validator)
         }
         ("/shacl/validate", "POST") => {
             tracing::info!("SHACL validate");
-            handle_shacl_validate(&store, &validator)
+            handle_shacl_validate(&store, validator)
         }
-        ("/shacl/mode", "GET") => handle_shacl_get_mode(&validator),
+        ("/shacl/mode", "GET") => handle_shacl_get_mode(validator),
         ("/shacl/mode", "PUT") => {
             check_write_auth(request, write_key)?;
             tracing::info!("SHACL mode update");
-            handle_shacl_set_mode(request, &validator)
+            handle_shacl_set_mode(request, validator)
         }
 
         // --- Everything else (with validation-on-ingest for write paths) ---
         ("/update", "POST") => {
             check_write_auth(request, write_key)?;
             tracing::info!("SPARQL UPDATE (with SHACL validation)");
-            let ct = content_type(request)
-                .ok_or_else(|| bad_request("No Content-Type given"))?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
             let update = if ct == "application/sparql-update" {
                 limited_string_body(request)?
             } else if ct == "application/x-www-form-urlencoded" {
@@ -379,23 +411,22 @@ fn handle_request(
             };
             let result = evaluate_sparql_update(&store, &update);
             if result.is_ok() {
-                validate_after_write(&store, &validator)?;
+                validate_after_write(&store, validator)?;
             }
             result
         }
         ("/store", "POST") => {
             check_write_auth(request, write_key)?;
             tracing::info!("Store POST with SHACL validation");
-            let ct = content_type(request)
-                .ok_or_else(|| bad_request("No Content-Type given"))?;
-            let format = RdfFormat::from_media_type(&ct)
-                .ok_or_else(|| unsupported_media_type(&ct))?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
+            let format =
+                RdfFormat::from_media_type(&ct).ok_or_else(|| unsupported_media_type(&ct))?;
             let parser = RdfParser::from_format(format);
             let body = limited_body_with_max(request, max_upload_size)?;
             store
                 .load_from_reader(parser, body.as_slice())
-                .map_err(|e| internal_server_error(e))?;
-            validate_after_write(&store, &validator)?;
+                .map_err(internal_server_error)?;
+            validate_after_write(&store, validator)?;
             Response::builder()
                 .status(StatusCode::NO_CONTENT)
                 .body(Body::empty())
@@ -435,7 +466,7 @@ fn handle_request_core(
             .map_err(internal_server_error),
 
         ("/ready", "GET") => {
-            let _ = store.is_empty().map_err(internal_server_error)?;
+            let _: bool = store.is_empty().map_err(internal_server_error)?;
             Response::builder()
                 .status(StatusCode::OK)
                 .header(CONTENT_TYPE, "text/plain")
@@ -465,8 +496,7 @@ fn handle_request_core(
 
         ("/query", "POST") => {
             tracing::info!("SPARQL query via POST");
-            let ct = content_type(request)
-                .ok_or_else(|| bad_request("No Content-Type given"))?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
             if ct == "application/sparql-query" {
                 let query = limited_string_body(request)?;
                 evaluate_sparql_query(&store, &query, request, query_timeout)
@@ -482,12 +512,11 @@ fn handle_request_core(
             }
         }
 
-        // --- SPARQL Update (write — requires auth) ---
+        // --- SPARQL Update (write - requires auth) ---
         ("/update", "POST") => {
             check_write_auth(request, write_key)?;
             tracing::info!("SPARQL UPDATE");
-            let ct = content_type(request)
-                .ok_or_else(|| bad_request("No Content-Type given"))?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
             if ct == "application/sparql-update" {
                 let update = limited_string_body(request)?;
                 evaluate_sparql_update(&store, &update)
@@ -503,20 +532,19 @@ fn handle_request_core(
             }
         }
 
-        // --- Graph Store Protocol: load data (write — requires auth) ---
+        // --- Graph Store Protocol: load data (write - requires auth) ---
         ("/store", "POST") => {
             check_write_auth(request, write_key)?;
             tracing::info!("Store POST (graph upload)");
-            let ct = content_type(request)
-                .ok_or_else(|| bad_request("No Content-Type given"))?;
-            let format = RdfFormat::from_media_type(&ct)
-                .ok_or_else(|| unsupported_media_type(&ct))?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
+            let format =
+                RdfFormat::from_media_type(&ct).ok_or_else(|| unsupported_media_type(&ct))?;
             let parser = RdfParser::from_format(format);
             // SEC-14: Apply upload body size limit
             let body = limited_body_with_max(request, max_upload_size)?;
             store
                 .load_from_reader(parser, body.as_slice())
-                .map_err(|e| internal_server_error(e))?;
+                .map_err(internal_server_error)?;
             Response::builder()
                 .status(StatusCode::NO_CONTENT)
                 .body(Body::empty())
@@ -570,24 +598,23 @@ fn validate_after_write(
     store: &Store,
     validator: &Arc<Mutex<ShaclValidator>>,
 ) -> Result<(), HttpError> {
-    let v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let v = validator.lock().map_err(internal_server_error)?;
     if v.shapes().is_none() || v.mode() == ShacllibMode::Off {
         return Ok(());
     }
     match v.validate(store) {
-        Ok(oxigraph_shacl::validator::ValidationOutcome::Passed)
-        | Ok(oxigraph_shacl::validator::ValidationOutcome::Skipped) => Ok(()),
+        Ok(
+            oxigraph_shacl::validator::ValidationOutcome::Passed
+            | oxigraph_shacl::validator::ValidationOutcome::Skipped,
+        ) => Ok(()),
         Ok(oxigraph_shacl::validator::ValidationOutcome::Failed(report)) => {
             let report_json = oxigraph_shacl::report::report_to_json(&report);
             if v.mode() == ShacllibMode::Warn {
                 tracing::warn!(report = %report_json, "SHACL validation warning");
                 Ok(())
             } else {
-                tracing::warn!(report = %report_json, "SHACL validation failed — rejecting write");
-                Err((
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    report_json,
-                ))
+                tracing::warn!(report = %report_json, "SHACL validation failed - rejecting write");
+                Err((StatusCode::UNPROCESSABLE_ENTITY, report_json))
             }
         }
         Err(e) => {
@@ -606,7 +633,7 @@ fn handle_shacl_upload_shapes(
     let shapes = CompiledShapes::from_turtle(&turtle)
         .map_err(|e| bad_request(format!("Failed to compile shapes: {e}")))?;
     let count = shapes.shape_count();
-    let mut v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let mut v = validator.lock().map_err(internal_server_error)?;
     v.set_shapes(shapes);
     let body = format!("{{\"loaded\": true, \"shape_count\": {count}}}");
     Response::builder()
@@ -620,7 +647,7 @@ fn handle_shacl_upload_shapes(
 fn handle_shacl_get_shapes(
     validator: &Arc<Mutex<ShaclValidator>>,
 ) -> Result<Response<Body>, HttpError> {
-    let v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let v = validator.lock().map_err(internal_server_error)?;
     let (loaded, count) = match v.shapes() {
         Some(s) => (true, s.shape_count()),
         None => (false, 0),
@@ -637,7 +664,7 @@ fn handle_shacl_get_shapes(
 fn handle_shacl_delete_shapes(
     validator: &Arc<Mutex<ShaclValidator>>,
 ) -> Result<Response<Body>, HttpError> {
-    let mut v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let mut v = validator.lock().map_err(internal_server_error)?;
     // Replace the validator with a fresh one keeping the same mode
     let mode = v.mode();
     *v = ShaclValidator::new(mode);
@@ -652,20 +679,22 @@ fn handle_shacl_validate(
     store: &Store,
     validator: &Arc<Mutex<ShaclValidator>>,
 ) -> Result<Response<Body>, HttpError> {
-    let v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let v = validator.lock().map_err(internal_server_error)?;
     if v.shapes().is_none() {
-        return Err(bad_request("No SHACL shapes loaded. Upload shapes first via POST /shacl/shapes"));
+        return Err(bad_request(
+            "No SHACL shapes loaded. Upload shapes first via POST /shacl/shapes",
+        ));
     }
-    let outcome = v.validate(store).map_err(|e| internal_server_error(e))?;
+    let outcome = v.validate(store).map_err(internal_server_error)?;
     let body = match &outcome {
         oxigraph_shacl::validator::ValidationOutcome::Skipped => {
-            "{\"conforms\": null, \"skipped\": true}".to_string()
+            "{\"conforms\": null, \"skipped\": true}".to_owned()
         }
         oxigraph_shacl::validator::ValidationOutcome::Passed => {
-            "{\"conforms\": true, \"results_count\": 0}".to_string()
+            "{\"conforms\": true, \"results_count\": 0}".to_owned()
         }
         oxigraph_shacl::validator::ValidationOutcome::Failed(report) => {
-            oxigraph_shacl::report::report_to_json(&report)
+            oxigraph_shacl::report::report_to_json(report)
         }
     };
     Response::builder()
@@ -688,7 +717,7 @@ fn shacl_mode_str(mode: ShacllibMode) -> &'static str {
 fn handle_shacl_get_mode(
     validator: &Arc<Mutex<ShaclValidator>>,
 ) -> Result<Response<Body>, HttpError> {
-    let v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let v = validator.lock().map_err(internal_server_error)?;
     let mode = shacl_mode_str(v.mode());
     let body = format!("{{\"mode\": \"{mode}\"}}");
     Response::builder()
@@ -705,9 +734,7 @@ fn handle_shacl_set_mode(
 ) -> Result<Response<Body>, HttpError> {
     let body_str = limited_string_body(request)?;
     // Simple JSON parsing: find "mode" value without pulling in serde_json
-    let mode_value = body_str
-        .split('"')
-        .collect::<Vec<_>>();
+    let mode_value = body_str.split('"').collect::<Vec<_>>();
     // Expected format: {"mode": "enforce"}
     // After splitting by '"': ["", "{", "mode", ": ", "enforce", "}"]
     let mode_str = mode_value
@@ -715,18 +742,22 @@ fn handle_shacl_set_mode(
         .enumerate()
         .find(|(_, s)| **s == "mode")
         .and_then(|(i, _)| mode_value.get(i + 2))
-        .ok_or_else(|| bad_request("Expected JSON body with \"mode\" field, e.g. {\"mode\": \"enforce\"}"))?;
+        .ok_or_else(|| {
+            bad_request("Expected JSON body with \"mode\" field, e.g. {\"mode\": \"enforce\"}")
+        })?;
 
     let new_mode = match *mode_str {
         "off" => ShacllibMode::Off,
         "warn" => ShacllibMode::Warn,
         "enforce" => ShacllibMode::Enforce,
-        other => return Err(bad_request(format!(
-            "Invalid mode: \"{other}\". Must be one of: off, warn, enforce"
-        ))),
+        other => {
+            return Err(bad_request(format!(
+                "Invalid mode: \"{other}\". Must be one of: off, warn, enforce"
+            )));
+        }
     };
 
-    let mut v = validator.lock().map_err(|e| internal_server_error(e))?;
+    let mut v = validator.lock().map_err(internal_server_error)?;
     v.set_mode(new_mode);
     let mode = shacl_mode_str(v.mode());
     let body = format!("{{\"mode\": \"{mode}\"}}");
@@ -750,13 +781,19 @@ fn evaluate_sparql_query(
     let start = Instant::now();
     let evaluator = SparqlEvaluator::new();
     let prepared = evaluator.parse_query(query).map_err(bad_request)?;
-    let results = prepared.on_store(store).execute().map_err(internal_server_error)?;
+    let results = prepared
+        .on_store(store)
+        .execute()
+        .map_err(internal_server_error)?;
 
     // SEC-05/SEC-08: Check if query parsing already exceeded timeout
     if start.elapsed() > query_timeout {
         return Err((
             StatusCode::REQUEST_TIMEOUT,
-            format!("Query execution exceeded timeout of {}s", query_timeout.as_secs()),
+            format!(
+                "Query execution exceeded timeout of {}s",
+                query_timeout.as_secs()
+            ),
         ));
     }
 
@@ -803,7 +840,13 @@ fn evaluate_sparql_query(
             let format = rdf_content_negotiation(request)?;
             let deadline = start + query_timeout;
             ReadForWrite::build_response(
-                move |w| Ok((RdfSerializer::from_format(format).for_writer(w), triples, deadline)),
+                move |w| {
+                    Ok((
+                        RdfSerializer::from_format(format).for_writer(w),
+                        triples,
+                        deadline,
+                    ))
+                },
                 |(mut serializer, mut triples, deadline)| {
                     if Instant::now() > deadline {
                         return Err(io::Error::other("Query execution exceeded timeout"));
@@ -822,14 +865,9 @@ fn evaluate_sparql_query(
     }
 }
 
-fn evaluate_sparql_update(
-    store: &Store,
-    update: &str,
-) -> Result<Response<Body>, HttpError> {
+fn evaluate_sparql_update(store: &Store, update: &str) -> Result<Response<Body>, HttpError> {
     let evaluator = SparqlEvaluator::new();
-    let prepared = evaluator
-        .parse_update(update)
-        .map_err(bad_request)?;
+    let prepared = evaluator.parse_update(update).map_err(bad_request)?;
     prepared
         .on_store(store)
         .execute()
@@ -948,7 +986,7 @@ fn content_negotiation<F: Copy>(
 // Request helpers
 // ---------------------------------------------------------------------------
 
-fn url_query_parameter<'a>(request: &'a Request<Body>, param: &str) -> Option<String> {
+fn url_query_parameter(request: &Request<Body>, param: &str) -> Option<String> {
     let query_bytes = request.uri().query().unwrap_or_default().as_bytes();
     form_urlencoded::parse(query_bytes)
         .find(|(k, _)| k == param)
@@ -997,11 +1035,7 @@ fn limited_body_with_max(request: &mut Request<Body>, max_size: u64) -> Result<V
         body.take(max_size + 1)
             .read_to_end(&mut payload)
             .map_err(internal_server_error)?;
-        if payload.len()
-            > max_size
-                .try_into()
-                .map_err(internal_server_error)?
-        {
+        if payload.len() > max_size.try_into().map_err(internal_server_error)? {
             return Err(bad_request(format!(
                 "Body too large (limit {max_size} bytes)"
             )));
@@ -1032,7 +1066,7 @@ fn bad_request(message: impl fmt::Display) -> HttpError {
 /// (localhost-only mode), all writes are allowed.
 fn check_write_auth(request: &Request<Body>, write_key: &Option<String>) -> Result<(), HttpError> {
     let Some(expected_key) = write_key else {
-        return Ok(()); // No key configured (localhost mode) — allow
+        return Ok(()); // No key configured (localhost mode) - allow
     };
 
     let auth_header = request
@@ -1041,9 +1075,7 @@ fn check_write_auth(request: &Request<Body>, write_key: &Option<String>) -> Resu
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let provided_key = auth_header
-        .strip_prefix("Bearer ")
-        .unwrap_or(auth_header);
+    let provided_key = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
 
     if provided_key == expected_key {
         Ok(())
@@ -1051,7 +1083,7 @@ fn check_write_auth(request: &Request<Body>, write_key: &Option<String>) -> Resu
         tracing::warn!(path = %request.uri().path(), "Unauthorized write attempt");
         Err((
             StatusCode::UNAUTHORIZED,
-            "Write operations require a valid Authorization: Bearer <key> header".to_string(),
+            "Write operations require a valid Authorization: Bearer <key> header".to_owned(),
         ))
     }
 }

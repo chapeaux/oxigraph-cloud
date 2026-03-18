@@ -18,8 +18,8 @@ macro_rules! conformance_tests {
         #[cfg(test)]
         mod $mod_name {
             use crate::model::{GraphNameRef, NamedOrBlankNodeRef, QuadRef};
-            use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm};
             use crate::storage::Storage;
+            use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm};
             use oxrdf::NamedNodeRef;
 
             fn make_storage() -> Storage {
@@ -87,12 +87,7 @@ macro_rules! conformance_tests {
             fn t1_3_missing_key_returns_empty() {
                 let storage = make_storage();
                 let s = example_node("1");
-                let encoded = EncodedQuad::from(QuadRef::new(
-                    s,
-                    s,
-                    s,
-                    GraphNameRef::DefaultGraph,
-                ));
+                let encoded = EncodedQuad::from(QuadRef::new(s, s, s, GraphNameRef::DefaultGraph));
 
                 let reader = storage.snapshot();
                 assert!(!reader.contains(&encoded).unwrap());
@@ -279,14 +274,12 @@ macro_rules! conformance_tests {
                 let p = example_node("2");
                 let o = example_node("3");
 
-                let quads = vec![
-                    oxrdf::Quad::new(
-                        s.into_owned(),
-                        p.into_owned(),
-                        oxrdf::Term::from(o.into_owned()),
-                        oxrdf::GraphName::DefaultGraph,
-                    ),
-                ];
+                let quads = vec![oxrdf::Quad::new(
+                    s.into_owned(),
+                    p.into_owned(),
+                    oxrdf::Term::from(o.into_owned()),
+                    oxrdf::GraphName::DefaultGraph,
+                )];
 
                 let mut loader = storage.bulk_loader();
                 loader.load_batch(quads, 1).unwrap();
@@ -337,8 +330,8 @@ conformance_tests!(memory_conformance, Storage::new().unwrap());
 #[cfg(all(not(target_family = "wasm"), feature = "tikv"))]
 mod tikv_conformance {
     use crate::model::{GraphNameRef, QuadRef};
-    use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm};
     use crate::storage::Storage;
+    use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm};
     use oxrdf::NamedNodeRef;
 
     /// Returns `Some(Storage)` if TiKV is available, `None` otherwise.

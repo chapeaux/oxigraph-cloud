@@ -31,12 +31,7 @@ pub fn report_to_json(report: &ValidationReport) -> String {
     let results: Vec<String> = report_str
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            format!(
-                "{{\"detail\": {}}}",
-                escape_json_string(line.trim())
-            )
-        })
+        .map(|line| format!("{{\"detail\": {}}}", escape_json_string(line.trim())))
         .collect();
 
     let results_json = results.join(", ");
@@ -50,7 +45,7 @@ pub fn report_to_json(report: &ValidationReport) -> String {
 /// Produce a short human-readable summary of the validation report.
 pub fn report_summary(report: &ValidationReport) -> String {
     if report.conforms() {
-        "All shapes conform.".to_string()
+        "All shapes conform.".to_owned()
     } else {
         let report_str = report.to_string();
         let violation_count = report_str.lines().filter(|l| !l.trim().is_empty()).count();
@@ -59,19 +54,21 @@ pub fn report_summary(report: &ValidationReport) -> String {
 }
 
 fn escape_json_string(s: &str) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
-    for c in s.chars() {
-        match c {
+    for ch in s.chars() {
+        match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if c < '\x20' => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
+            _ if ch < '\x20' => {
+                // write! to String is infallible
+                write!(out, "\\u{:04x}", ch as u32).unwrap();
             }
-            c => out.push(c),
+            _ => out.push(ch),
         }
     }
     out.push('"');

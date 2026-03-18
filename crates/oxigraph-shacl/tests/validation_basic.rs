@@ -1,11 +1,12 @@
 //! Basic SHACL validation tests.
+#![expect(clippy::tests_outside_test_module)]
 
 use oxigraph::io::RdfFormat;
 use oxigraph::store::Store;
 use oxigraph_shacl::shapes::CompiledShapes;
-use oxigraph_shacl::validator::{ShaclMode, ShaclValidator, ValidationOutcome};
+use oxigraph_shacl::validator::{ShaclMode, ShaclValidator};
 
-const PERSON_SHAPES: &str = r#"
+const PERSON_SHAPES: &str = "
     @prefix sh: <http://www.w3.org/ns/shacl#> .
     @prefix ex: <http://example.org/> .
     @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -18,7 +19,7 @@ const PERSON_SHAPES: &str = r#"
             sh:minCount 1 ;
             sh:maxCount 1 ;
         ] .
-"#;
+";
 
 fn make_validator(mode: ShaclMode) -> ShaclValidator {
     let shapes = CompiledShapes::from_turtle(PERSON_SHAPES).unwrap();
@@ -52,10 +53,10 @@ fn valid_data_passes() {
 fn invalid_data_fails() {
     let v = make_validator(ShaclMode::Enforce);
     let store = store_with_data(
-        r#"
+        "
         @prefix ex: <http://example.org/> .
         ex:bob a ex:Person .
-    "#,
+    ",
     );
     assert!(v.validate(&store).unwrap().is_failed());
 }
@@ -71,10 +72,10 @@ fn empty_store_passes() {
 fn off_mode_skips() {
     let v = make_validator(ShaclMode::Off);
     let store = store_with_data(
-        r#"
+        "
         @prefix ex: <http://example.org/> .
         ex:bob a ex:Person .
-    "#,
+    ",
     );
     assert!(v.validate(&store).unwrap().is_skipped());
 }
@@ -83,10 +84,10 @@ fn off_mode_skips() {
 fn warn_mode_still_validates() {
     let v = make_validator(ShaclMode::Warn);
     let store = store_with_data(
-        r#"
+        "
         @prefix ex: <http://example.org/> .
         ex:bob a ex:Person .
-    "#,
+    ",
     );
     // Warn mode still runs validation; the caller decides what to do
     assert!(v.validate(&store).unwrap().is_failed());
@@ -96,5 +97,5 @@ fn warn_mode_still_validates() {
 fn no_shapes_returns_error() {
     let v = ShaclValidator::new(ShaclMode::Enforce);
     let store = Store::new().unwrap();
-    assert!(v.validate(&store).is_err());
+    v.validate(&store).unwrap_err();
 }

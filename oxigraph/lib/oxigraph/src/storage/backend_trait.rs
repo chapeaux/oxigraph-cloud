@@ -19,6 +19,11 @@
 //! Each backend implements these four components. The `StorageKind` enum in `mod.rs`
 //! dispatches to the appropriate backend at runtime.
 
+// These traits define the storage backend contract per ADR-002. They are not yet
+// used via generics but serve as documentation and compile-time validation of the
+// interface that new backends must implement.
+#![expect(dead_code)]
+
 use crate::model::{GraphNameRef, NamedOrBlankNodeRef, QuadRef};
 use crate::storage::error::StorageError;
 use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm, StrHash, StrLookup};
@@ -174,11 +179,7 @@ pub trait StorageBackendBulkLoader<'a> {
     fn without_atomicity(self) -> Self;
 
     /// Load a batch of quads.
-    fn load_batch(
-        &mut self,
-        quads: Vec<Quad>,
-        max_num_threads: usize,
-    ) -> Result<(), StorageError>;
+    fn load_batch(&mut self, quads: Vec<Quad>, max_num_threads: usize) -> Result<(), StorageError>;
 
     /// Commit all loaded data.
     fn commit(self) -> Result<(), StorageError>;

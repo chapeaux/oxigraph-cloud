@@ -1,4 +1,5 @@
 //! SHACL integration tests for oxigraph-shacl.
+#![expect(clippy::tests_outside_test_module)]
 //!
 //! These tests exercise SHACL validation through Oxigraph's Store API.
 //! Each test creates an in-memory Store, loads shapes and data as inline
@@ -35,9 +36,7 @@ fn load_turtle(store: &Store, turtle: &str, graph: Option<&str>) {
             .with_default_graph(NamedNodeRef::new_unchecked(g)),
         None => RdfParser::from_format(RdfFormat::Turtle),
     };
-    store
-        .load_from_slice(parser, turtle)
-        .expect("failed to load Turtle data into store");
+    store.load_from_slice(parser, turtle).unwrap();
 }
 
 /// Executes a SPARQL SELECT query and returns solution bindings.
@@ -45,17 +44,17 @@ fn load_turtle(store: &Store, turtle: &str, graph: Option<&str>) {
 fn sparql_select(store: &Store, query: &str) -> Vec<Vec<(String, String)>> {
     let results = SparqlEvaluator::new()
         .parse_query(query)
-        .expect("failed to parse SPARQL query")
+        .unwrap()
         .on_store(store)
         .execute()
-        .expect("failed to execute SPARQL query");
+        .unwrap();
     let mut rows = Vec::new();
     if let QueryResults::Solutions(solutions) = results {
         for solution in solutions.flatten() {
             let mut row = Vec::new();
             for name in solution.variables() {
                 if let Some(term) = solution.get(name.as_str()) {
-                    row.push((name.as_str().to_string(), term.to_string()));
+                    row.push((name.as_str().to_owned(), term.to_string()));
                 }
             }
             rows.push(row);
@@ -117,7 +116,7 @@ fn validate(store: &Store, shapes_graph_iri: &str, mode: ShaclMode) -> Option<Va
     // The stub inspects the store to detect common constraint violations
     // so that tests can exercise the full assert flow even before the
     // real validator is wired in.
-    let _ = shapes_graph_iri;
+    let _: &str = shapes_graph_iri;
     let result = stub_validate(store);
     Some(result)
 }
@@ -133,22 +132,22 @@ fn stub_validate(store: &Store) -> ValidationResult {
     // Check: every ex:Person must have at least one ex:name
     let missing_name = sparql_select(
         store,
-        r#"
+        "
         PREFIX ex: <http://example.org/>
         SELECT ?person WHERE {
             ?person a ex:Person .
             FILTER NOT EXISTS { ?person ex:name ?name }
         }
-        "#,
+        ",
     );
     for row in &missing_name {
         if let Some((_, person)) = row.first() {
             violations.push(Violation {
                 focus_node: person.clone(),
-                result_path: Some("http://example.org/name".to_string()),
-                message: Some("Less than 1 values on ex:name".to_string()),
+                result_path: Some("http://example.org/name".to_owned()),
+                message: Some("Less than 1 values on ex:name".to_owned()),
                 source_constraint_component: Some(
-                    "http://www.w3.org/ns/shacl#MinCountConstraintComponent".to_string(),
+                    "http://www.w3.org/ns/shacl#MinCountConstraintComponent".to_owned(),
                 ),
             });
         }
@@ -157,7 +156,7 @@ fn stub_validate(store: &Store) -> ValidationResult {
     // Check: ex:age must be xsd:integer (detect wrong datatype on ex:age)
     let wrong_age_type = sparql_select(
         store,
-        r#"
+        "
         PREFIX ex: <http://example.org/>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT ?person ?age WHERE {
@@ -165,16 +164,16 @@ fn stub_validate(store: &Store) -> ValidationResult {
                     ex:age ?age .
             FILTER(datatype(?age) != xsd:integer)
         }
-        "#,
+        ",
     );
     for row in &wrong_age_type {
         if let Some((_, person)) = row.first() {
             violations.push(Violation {
                 focus_node: person.clone(),
-                result_path: Some("http://example.org/age".to_string()),
-                message: Some("Value does not have datatype xsd:integer".to_string()),
+                result_path: Some("http://example.org/age".to_owned()),
+                message: Some("Value does not have datatype xsd:integer".to_owned()),
                 source_constraint_component: Some(
-                    "http://www.w3.org/ns/shacl#DatatypeConstraintComponent".to_string(),
+                    "http://www.w3.org/ns/shacl#DatatypeConstraintComponent".to_owned(),
                 ),
             });
         }
@@ -183,7 +182,7 @@ fn stub_validate(store: &Store) -> ValidationResult {
     // Check: ex:name must be xsd:string (detect wrong datatype on ex:name)
     let wrong_name_type = sparql_select(
         store,
-        r#"
+        "
         PREFIX ex: <http://example.org/>
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT ?person ?name WHERE {
@@ -191,16 +190,16 @@ fn stub_validate(store: &Store) -> ValidationResult {
                     ex:name ?name .
             FILTER(datatype(?name) != xsd:string)
         }
-        "#,
+        ",
     );
     for row in &wrong_name_type {
         if let Some((_, person)) = row.first() {
             violations.push(Violation {
                 focus_node: person.clone(),
-                result_path: Some("http://example.org/name".to_string()),
-                message: Some("Value does not have datatype xsd:string".to_string()),
+                result_path: Some("http://example.org/name".to_owned()),
+                message: Some("Value does not have datatype xsd:string".to_owned()),
                 source_constraint_component: Some(
-                    "http://www.w3.org/ns/shacl#DatatypeConstraintComponent".to_string(),
+                    "http://www.w3.org/ns/shacl#DatatypeConstraintComponent".to_owned(),
                 ),
             });
         }
@@ -222,10 +221,10 @@ fn stub_validate(store: &Store) -> ValidationResult {
         if let Some((_, person)) = row.first() {
             violations.push(Violation {
                 focus_node: person.clone(),
-                result_path: Some("http://example.org/email".to_string()),
-                message: Some("Value does not match pattern '^[^@]+@[^@]+$'".to_string()),
+                result_path: Some("http://example.org/email".to_owned()),
+                message: Some("Value does not match pattern '^[^@]+@[^@]+$'".to_owned()),
                 source_constraint_component: Some(
-                    "http://www.w3.org/ns/shacl#PatternConstraintComponent".to_string(),
+                    "http://www.w3.org/ns/shacl#PatternConstraintComponent".to_owned(),
                 ),
             });
         }
@@ -234,7 +233,7 @@ fn stub_validate(store: &Store) -> ValidationResult {
     // Check: ex:maxCount violation -- more than 1 ex:spouse
     let max_count = sparql_select(
         store,
-        r#"
+        "
         PREFIX ex: <http://example.org/>
         SELECT ?person (COUNT(?spouse) AS ?cnt) WHERE {
             ?person a ex:Person ;
@@ -242,16 +241,16 @@ fn stub_validate(store: &Store) -> ValidationResult {
         }
         GROUP BY ?person
         HAVING (COUNT(?spouse) > 1)
-        "#,
+        ",
     );
     for row in &max_count {
         if let Some((_, person)) = row.first() {
             violations.push(Violation {
                 focus_node: person.clone(),
-                result_path: Some("http://example.org/spouse".to_string()),
-                message: Some("More than 1 values on ex:spouse".to_string()),
+                result_path: Some("http://example.org/spouse".to_owned()),
+                message: Some("More than 1 values on ex:spouse".to_owned()),
                 source_constraint_component: Some(
-                    "http://www.w3.org/ns/shacl#MaxCountConstraintComponent".to_string(),
+                    "http://www.w3.org/ns/shacl#MaxCountConstraintComponent".to_owned(),
                 ),
             });
         }
@@ -273,10 +272,8 @@ fn apply_mode(mode: ShaclMode, result: &Option<ValidationResult>) -> Result<(), 
                 if !r.conforms {
                     // In warn mode we log but accept.
                     // TODO: In production this would go through the tracing crate.
-                    eprintln!(
-                        "[SHACL WARN] {} violation(s) detected but data accepted",
-                        r.violations.len()
-                    );
+                    // In production, this would go through the tracing crate.
+                    // Suppressed for clippy compliance in tests.
                 }
             }
             Ok(())
@@ -347,7 +344,7 @@ fn test_valid_data_accepted() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("Enforce mode should produce a report");
+    let report = result.unwrap();
     assert!(
         report.conforms,
         "Valid data should conform; got violations: {:?}",
@@ -378,7 +375,7 @@ fn test_invalid_data_rejected_missing_name() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("Enforce mode should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "Data missing required ex:name should not conform"
@@ -409,7 +406,7 @@ fn test_min_count_violation() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "minCount violation should cause non-conformance"
@@ -425,9 +422,7 @@ fn test_min_count_violation() {
         "Should have a violation on ex:name path"
     );
     assert!(
-        name_violations[0]
-            .source_constraint_component
-            .as_deref()
+        name_violations[0].source_constraint_component.as_deref()
             == Some("http://www.w3.org/ns/shacl#MinCountConstraintComponent"),
         "Violation should reference MinCountConstraintComponent"
     );
@@ -455,7 +450,7 @@ fn test_max_count_violation() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "maxCount violation should cause non-conformance"
@@ -471,9 +466,7 @@ fn test_max_count_violation() {
         "Should have a violation on ex:spouse path"
     );
     assert!(
-        spouse_violations[0]
-            .source_constraint_component
-            .as_deref()
+        spouse_violations[0].source_constraint_component.as_deref()
             == Some("http://www.w3.org/ns/shacl#MaxCountConstraintComponent"),
         "Violation should reference MaxCountConstraintComponent"
     );
@@ -500,7 +493,7 @@ fn test_datatype_constraint_wrong_age_type() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "Wrong datatype on ex:age should cause non-conformance"
@@ -516,9 +509,7 @@ fn test_datatype_constraint_wrong_age_type() {
         "Should have a violation on ex:age path"
     );
     assert!(
-        age_violations[0]
-            .source_constraint_component
-            .as_deref()
+        age_violations[0].source_constraint_component.as_deref()
             == Some("http://www.w3.org/ns/shacl#DatatypeConstraintComponent"),
         "Violation should reference DatatypeConstraintComponent"
     );
@@ -544,7 +535,7 @@ fn test_datatype_constraint_wrong_name_type() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "Wrong datatype on ex:name should cause non-conformance"
@@ -582,7 +573,7 @@ fn test_pattern_constraint_invalid_email() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "Invalid email pattern should cause non-conformance"
@@ -598,9 +589,7 @@ fn test_pattern_constraint_invalid_email() {
         "Should have a violation on ex:email path"
     );
     assert!(
-        email_violations[0]
-            .source_constraint_component
-            .as_deref()
+        email_violations[0].source_constraint_component.as_deref()
             == Some("http://www.w3.org/ns/shacl#PatternConstraintComponent"),
         "Violation should reference PatternConstraintComponent"
     );
@@ -622,7 +611,7 @@ fn test_pattern_constraint_valid_email() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(
         report.conforms,
         "Valid email should conform; got violations: {:?}",
@@ -650,7 +639,7 @@ fn test_validation_report_fields() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(!report.conforms);
 
     let v = &report.violations[0];
@@ -668,7 +657,7 @@ fn test_validation_report_fields() {
     );
     // Message should be present and non-empty
     assert!(
-        v.message.as_ref().map_or(false, |m| !m.is_empty()),
+        v.message.as_ref().is_some_and(|m| !m.is_empty()),
         "Violation message should be non-empty"
     );
     // Source constraint component should be present
@@ -688,10 +677,10 @@ fn test_mode_off_skips_validation() {
     load_turtle(&store, PERSON_SHAPE, Some(SHAPES_GRAPH));
 
     // Invalid data: missing required name
-    let data = r#"
+    let data = "
         @prefix ex: <http://example.org/> .
         ex:nobody a ex:Person .
-    "#;
+    ";
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Off);
@@ -715,14 +704,14 @@ fn test_mode_warn_accepts_invalid_data() {
     load_turtle(&store, PERSON_SHAPE, Some(SHAPES_GRAPH));
 
     // Invalid data: missing required name
-    let data = r#"
+    let data = "
         @prefix ex: <http://example.org/> .
         ex:nobody a ex:Person .
-    "#;
+    ";
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Warn);
-    let report = result.expect("Warn mode should still produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "Data should not conform (missing ex:name)"
@@ -746,14 +735,14 @@ fn test_mode_enforce_rejects_invalid_data() {
     load_turtle(&store, PERSON_SHAPE, Some(SHAPES_GRAPH));
 
     // Invalid data: missing required name
-    let data = r#"
+    let data = "
         @prefix ex: <http://example.org/> .
         ex:nobody a ex:Person .
-    "#;
+    ";
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("Enforce mode should produce a report");
+    let report = result.unwrap();
     assert!(
         !report.conforms,
         "Data should not conform (missing ex:name)"
@@ -782,7 +771,7 @@ fn test_mode_enforce_accepts_valid_data() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("Enforce mode should produce a report");
+    let report = result.unwrap();
     assert!(report.conforms, "Valid data should conform");
 
     let policy = apply_mode(ShaclMode::Enforce, &Some(report));
@@ -813,7 +802,7 @@ fn test_multiple_violations_same_node() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
+    let report = result.unwrap();
     assert!(!report.conforms);
     assert!(
         report.violations.len() >= 3,
@@ -830,9 +819,9 @@ fn test_multiple_violations_same_node() {
 fn test_no_shapes_data_conforms() {
     let store = Store::new().unwrap();
     // Load shapes graph but with no shape definitions (empty)
-    let empty_shapes = r#"
+    let empty_shapes = "
         @prefix sh: <http://www.w3.org/ns/shacl#> .
-    "#;
+    ";
     load_turtle(&store, empty_shapes, Some(SHAPES_GRAPH));
 
     let data = r#"
@@ -842,11 +831,8 @@ fn test_no_shapes_data_conforms() {
     load_turtle(&store, data, None);
 
     let result = validate(&store, SHAPES_GRAPH, ShaclMode::Enforce);
-    let report = result.expect("should produce a report");
-    assert!(
-        report.conforms,
-        "With no shapes, all data should conform"
-    );
+    let report = result.unwrap();
+    assert!(report.conforms, "With no shapes, all data should conform");
 }
 
 // ===========================================================================

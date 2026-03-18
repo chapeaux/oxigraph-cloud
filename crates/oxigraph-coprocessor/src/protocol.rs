@@ -68,28 +68,22 @@ pub struct CoprocessorRequest {
 
 /// Decode a raw request from the binary format.
 pub fn decode_request(data: &[u8]) -> Result<CoprocessorRequest, String> {
-    if data.len() < 4 {
-        return Err("request too short: need at least 4 bytes".into());
-    }
-
+    let (&[op_byte, table_prefix, pfx_hi, pfx_lo], rest) = data
+        .split_first_chunk::<4>()
+        .ok_or("request too short: need at least 4 bytes")?;
     let op_type =
-        OpType::from_byte(data[0]).ok_or_else(|| format!("unknown op type: {}", data[0]))?;
-    let table_prefix = data[1];
-    let key_prefix_len = u16::from_be_bytes([data[2], data[3]]) as usize;
+        OpType::from_byte(op_byte).ok_or_else(|| format!("unknown op type: {op_byte}"))?;
+    let key_prefix_len = usize::from(u16::from_be_bytes([pfx_hi, pfx_lo]));
 
-    if data.len() < 4 + key_prefix_len {
+    if rest.len() < key_prefix_len {
         return Err(format!(
             "request truncated: declared key prefix length {key_prefix_len} but only {} bytes remain",
-            data.len() - 4
+            rest.len()
         ));
     }
 
-    let key_prefix = data[4..4 + key_prefix_len].to_vec();
-    let bloom_filter = if data.len() > 4 + key_prefix_len {
-        Some(data[4 + key_prefix_len..].to_vec())
-    } else {
-        None
-    };
+    let key_prefix = rest[..key_prefix_len].to_vec();
+    let bloom_filter = (rest.len() > key_prefix_len).then(|| rest[key_prefix_len..].to_vec());
 
     Ok(CoprocessorRequest {
         op_type,
@@ -107,11 +101,11 @@ pub fn encode_request(req: &CoprocessorRequest) -> Vec<u8> {
 
     buf.push(req.op_type as u8);
     buf.push(req.table_prefix);
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     let len_bytes = (key_prefix_len as u16).to_be_bytes();
     buf.extend_from_slice(&len_bytes);
     buf.extend_from_slice(&req.key_prefix);
-    if let Some(ref bloom) = req.bloom_filter {
+    if let Some(bloom) = &req.bloom_filter {
         buf.extend_from_slice(bloom);
     }
     buf
@@ -125,15 +119,14 @@ pub fn encode_request(req: &CoprocessorRequest) -> Vec<u8> {
 pub fn encode_scan_response(scanned_keys: u64, pairs: &[(Vec<u8>, Vec<u8>)]) -> Vec<u8> {
     let mut buf = Vec::new();
     buf.extend_from_slice(&scanned_keys.to_be_bytes());
-    #[allow(clippy::cast_possible_truncation)]
     let count_bytes = (pairs.len() as u64).to_be_bytes();
     buf.extend_from_slice(&count_bytes);
     for (key, value) in pairs {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation)]
         let key_len = (key.len() as u16).to_be_bytes();
         buf.extend_from_slice(&key_len);
         buf.extend_from_slice(key);
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation)]
         let val_len = (value.len() as u32).to_be_bytes();
         buf.extend_from_slice(&val_len);
         buf.extend_from_slice(value);
@@ -158,62 +151,72 @@ pub fn encode_min_max_response(
     let mut buf = Vec::new();
     buf.extend_from_slice(&scanned_keys.to_be_bytes());
     // result_count = 1 if we have any result, 0 otherwise
-    let has_result: u64 = if min_key.is_some() || max_key.is_some() {
-        1
-    } else {
-        0
-    };
+    let has_result: u64 = u64::from(min_key.is_some() || max_key.is_some());
     buf.extend_from_slice(&has_result.to_be_bytes());
     // min_key
     if let Some(k) = min_key {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation)]
         let len = (k.len() as u16).to_be_bytes();
         buf.extend_from_slice(&len);
         buf.extend_from_slice(k);
     } else {
-        buf.extend_from_slice(&0u16.to_be_bytes());
+        buf.extend_from_slice(&0_u16.to_be_bytes());
     }
     // max_key
     if let Some(k) = max_key {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation)]
         let len = (k.len() as u16).to_be_bytes();
         buf.extend_from_slice(&len);
         buf.extend_from_slice(k);
     } else {
-        buf.extend_from_slice(&0u16.to_be_bytes());
+        buf.extend_from_slice(&0_u16.to_be_bytes());
     }
     buf
 }
 
+/// (scanned_keys, key-value pairs)
+type ScanResponseData = (u64, Vec<(Vec<u8>, Vec<u8>)>);
+
 /// Decode a scan response back into (scanned_keys, pairs).
-pub fn decode_scan_response(data: &[u8]) -> Result<(u64, Vec<(Vec<u8>, Vec<u8>)>), String> {
-    if data.len() < 16 {
-        return Err("scan response too short".into());
-    }
-    let scanned_keys = u64::from_be_bytes(data[0..8].try_into().unwrap());
-    let count = u64::from_be_bytes(data[8..16].try_into().unwrap());
-    let mut offset = 16;
-    let mut pairs = Vec::with_capacity(count as usize);
+pub fn decode_scan_response(data: &[u8]) -> Result<ScanResponseData, String> {
+    let (header, body) = data
+        .split_first_chunk::<16>()
+        .ok_or("scan response too short")?;
+    let (scanned_bytes, count_bytes) = header.split_at(8);
+    let scanned_keys = u64::from_be_bytes(scanned_bytes.try_into().map_err(|_| "invalid header")?);
+    let count = u64::from_be_bytes(count_bytes.try_into().map_err(|_| "invalid header")?);
+
+    let mut offset = 0;
+    let mut pairs = Vec::new();
     for _ in 0..count {
-        if offset + 2 > data.len() {
+        if offset + 2 > body.len() {
             return Err("truncated key length".into());
         }
-        let key_len = u16::from_be_bytes(data[offset..offset + 2].try_into().unwrap()) as usize;
+        let key_len = usize::from(u16::from_be_bytes(
+            body[offset..offset + 2]
+                .try_into()
+                .map_err(|_| "invalid key length bytes")?,
+        ));
         offset += 2;
-        if offset + key_len > data.len() {
+        if offset + key_len > body.len() {
             return Err("truncated key data".into());
         }
-        let key = data[offset..offset + key_len].to_vec();
+        let key = body[offset..offset + key_len].to_vec();
         offset += key_len;
-        if offset + 4 > data.len() {
+        if offset + 4 > body.len() {
             return Err("truncated value length".into());
         }
-        let val_len = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        let val_len = u32::from_be_bytes(
+            body[offset..offset + 4]
+                .try_into()
+                .map_err(|_| "invalid value length bytes")?,
+        );
+        let val_len = usize::try_from(val_len).map_err(|_| "value length overflow")?;
         offset += 4;
-        if offset + val_len > data.len() {
+        if offset + val_len > body.len() {
             return Err("truncated value data".into());
         }
-        let value = data[offset..offset + val_len].to_vec();
+        let value = body[offset..offset + val_len].to_vec();
         offset += val_len;
         pairs.push((key, value));
     }
@@ -287,11 +290,11 @@ mod tests {
 
     #[test]
     fn decode_request_too_short() {
-        assert!(decode_request(&[0, 1, 2]).is_err());
+        decode_request(&[0, 1, 2]).unwrap_err();
     }
 
     #[test]
     fn decode_request_bad_op() {
-        assert!(decode_request(&[99, 0, 0, 0]).is_err());
+        decode_request(&[99, 0, 0, 0]).unwrap_err();
     }
 }

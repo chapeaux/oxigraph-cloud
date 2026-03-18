@@ -33,7 +33,7 @@ pub enum ValidationOutcome {
     /// All shapes conform.
     Passed,
     /// One or more shapes did not conform.
-    Failed(ValidationReport),
+    Failed(Box<ValidationReport>),
 }
 
 impl ValidationOutcome {
@@ -147,7 +147,7 @@ impl ShaclValidator {
         let shapes = self
             .shapes
             .as_ref()
-            .ok_or_else(|| ShaclError::ValidationEngine("No shapes loaded".to_string()))?;
+            .ok_or_else(|| ShaclError::ValidationEngine("No shapes loaded".to_owned()))?;
 
         // Serialize quads from the oxigraph store to NTriples format
         let ntriples = serialize_store_to_ntriples(store)?;
@@ -162,8 +162,7 @@ impl ShaclValidator {
         .map_err(|e| ShaclError::DataLoading(e.to_string()))?;
 
         // Run validation
-        let mut processor =
-            RdfDataValidation::from_rdf_data(rdf_data, ShaclValidationMode::Native);
+        let mut processor = RdfDataValidation::from_rdf_data(rdf_data, ShaclValidationMode::Native);
         let report = processor
             .validate(shapes.schema())
             .map_err(|e| ShaclError::ValidationEngine(e.to_string()))?;
@@ -171,7 +170,7 @@ impl ShaclValidator {
         if report.conforms() {
             Ok(ValidationOutcome::Passed)
         } else {
-            Ok(ValidationOutcome::Failed(report))
+            Ok(ValidationOutcome::Failed(Box::new(report)))
         }
     }
 }
@@ -179,9 +178,8 @@ impl ShaclValidator {
 /// Serializes all quads in the store as NTriples (ignoring graph names).
 fn serialize_store_to_ntriples(store: &Store) -> Result<String, ShaclError> {
     let mut output = String::new();
-    for quad_result in store.iter() {
-        let quad = quad_result
-            .map_err(|e| ShaclError::StoreSerialization(e.to_string()))?;
+    for quad_result in store {
+        let quad = quad_result.map_err(|e| ShaclError::StoreSerialization(e.to_string()))?;
         // NTriples format: <subject> <predicate> <object> .
         // We use the triple (ignoring the graph name) for default-graph validation
         let triple = quad.as_ref().into();
@@ -193,7 +191,10 @@ fn serialize_store_to_ntriples(store: &Store) -> Result<String, ShaclError> {
 
 /// Formats a single triple as an NTriples line.
 fn format_ntriples_triple(triple: &oxrdf::TripleRef<'_>) -> String {
-    format!("{} {} {} .", triple.subject, triple.predicate, triple.object)
+    format!(
+        "{} {} {} .",
+        triple.subject, triple.predicate, triple.object
+    )
 }
 
 #[cfg(test)]
@@ -202,7 +203,7 @@ mod tests {
     use oxigraph::io::RdfFormat;
     use oxigraph::store::Store;
 
-    const PERSON_SHAPES: &str = r#"
+    const PERSON_SHAPES: &str = "
         @prefix sh: <http://www.w3.org/ns/shacl#> .
         @prefix ex: <http://example.org/> .
         @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -215,21 +216,21 @@ mod tests {
                 sh:minCount 1 ;
                 sh:maxCount 1 ;
             ] .
-    "#;
+    ";
 
-    const CONFORMANT_DATA: &str = r#"
+    const CONFORMANT_DATA: &str = "
         @prefix ex: <http://example.org/> .
         @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
         ex:alice a ex:Person ;
-            ex:name "Alice"^^xsd:string .
-    "#;
+            ex:name \"Alice\"^^xsd:string .
+    ";
 
-    const NON_CONFORMANT_DATA: &str = r#"
+    const NON_CONFORMANT_DATA: &str = "
         @prefix ex: <http://example.org/> .
 
         ex:bob a ex:Person .
-    "#;
+    ";
 
     #[test]
     fn test_mode_off_skips_validation() {
@@ -244,7 +245,7 @@ mod tests {
         let validator = ShaclValidator::new(ShaclMode::Enforce);
         let store = Store::new().unwrap();
         let result = validator.validate(&store);
-        assert!(result.is_err());
+        result.unwrap_err();
     }
 
     #[test]
@@ -265,10 +266,7 @@ mod tests {
             .unwrap();
 
         let outcome = validator.validate(&store).unwrap();
-        assert!(
-            outcome.is_passed(),
-            "Expected Passed but got: {outcome}"
-        );
+        assert!(outcome.is_passed(), "Expected Passed but got: {outcome}");
     }
 
     #[test]
@@ -283,10 +281,7 @@ mod tests {
             .unwrap();
 
         let outcome = validator.validate(&store).unwrap();
-        assert!(
-            outcome.is_failed(),
-            "Expected Failed but got: {outcome}"
-        );
+        assert!(outcome.is_failed(), "Expected Failed but got: {outcome}");
     }
 
     #[test]

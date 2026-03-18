@@ -55,9 +55,12 @@ impl std::fmt::Display for PluginError {
                 end_key,
             } => write!(
                 f,
-                "key {key:?} not in region {region_id} [{start_key:?}, {end_key:?})"
+                "key (len={}) not in region {region_id} [start_len={}, end_len={})",
+                key.len(),
+                start_key.len(),
+                end_key.len()
             ),
-            Self::Timeout(d) => write!(f, "timeout after {d:?}"),
+            Self::Timeout(d) => write!(f, "timeout after {} ms", d.as_millis()),
             Self::Canceled => write!(f, "canceled"),
             Self::Other(msg, _) => write!(f, "{msg}"),
         }
@@ -108,15 +111,12 @@ pub trait CoprocessorPlugin: Send + Sync {
 #[macro_export]
 macro_rules! declare_plugin {
     ($plugin_constructor:expr) => {
-        /// # Safety
-        ///
         /// Called by TiKV's plugin loader via FFI. The returned pointer must be
         /// freed by the caller using `Box::from_raw`.
         #[unsafe(no_mangle)]
-        #[allow(unsafe_code, improper_ctypes_definitions)]
+        #[expect(unsafe_code, improper_ctypes_definitions)]
         pub extern "C" fn _tikv_coprocessor_plugin_create()
-            -> *mut dyn $crate::plugin_api::CoprocessorPlugin
-        {
+        -> *mut dyn $crate::plugin_api::CoprocessorPlugin {
             let plugin = $plugin_constructor;
             let boxed: Box<dyn $crate::plugin_api::CoprocessorPlugin> = Box::new(plugin);
             Box::into_raw(boxed)
