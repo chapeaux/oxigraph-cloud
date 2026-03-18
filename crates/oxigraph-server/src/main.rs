@@ -5,7 +5,7 @@ use oxhttp::Server;
 use oxhttp::model::header::{
     ACCEPT, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
     ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS, ACCESS_CONTROL_REQUEST_METHOD,
-    CONTENT_TYPE, ORIGIN,
+    AUTHORIZATION, CONTENT_TYPE, ORIGIN,
 };
 use oxhttp::model::{Body, HeaderValue, Method, Request, Response, StatusCode};
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
@@ -17,8 +17,9 @@ use std::cmp::min;
 use std::io::{self, Read, Write};
 use std::net::ToSocketAddrs;
 use std::rc::Rc;
+use std::sync::Arc;
 #[cfg(feature = "shacl")]
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 use std::{fmt, str};
@@ -92,6 +93,12 @@ struct Args {
     /// Maximum upload body size in bytes for /store POST (default 128 MB)
     #[arg(long, default_value_t = DEFAULT_MAX_UPLOAD_SIZE)]
     max_upload_size: u64,
+
+    /// API key required for write operations (update, store POST, SHACL mutations).
+    /// Can also be set via OXIGRAPH_WRITE_KEY environment variable.
+    /// Required when binding to a non-localhost address.
+    #[arg(long, env = "OXIGRAPH_WRITE_KEY")]
+    write_key: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -103,6 +110,19 @@ fn main() -> anyhow::Result<()> {
     let query_timeout = Duration::from_secs(args.query_timeout);
     let max_upload_size = args.max_upload_size;
     let cors_origins = args.cors_origins.clone();
+    let write_key = args.write_key.clone();
+
+    // SEC-01: Require write key when binding to non-localhost
+    let is_localhost = args.bind.starts_with("127.0.0.1:")
+        || args.bind.starts_with("localhost:")
+        || args.bind.starts_with("[::1]:");
+    if !is_localhost && write_key.is_none() {
+        anyhow::bail!(
+            "Binding to {} requires --write-key (or OXIGRAPH_WRITE_KEY env var) to be set.\n\
+             Use --bind 127.0.0.1:7878 for local-only access without authentication.",
+            args.bind
+        );
+    }
 
     let store = match args.backend.as_str() {
         "rocksdb" => {
@@ -160,10 +180,10 @@ fn main() -> anyhow::Result<()> {
     };
 
     #[cfg(feature = "shacl")]
-    return serve(store, &args.bind, cors_origins, query_timeout, max_upload_size, validator);
+    return serve(store, &args.bind, cors_origins, query_timeout, max_upload_size, write_key, validator);
 
     #[cfg(not(feature = "shacl"))]
-    serve(store, &args.bind, cors_origins, query_timeout, max_upload_size)
+    serve(store, &args.bind, cors_origins, query_timeout, max_upload_size, write_key)
 }
 
 #[cfg(feature = "shacl")]
@@ -173,22 +193,26 @@ fn serve(
     cors_origins: String,
     query_timeout: Duration,
     max_upload_size: u64,
+    write_key: Option<String>,
     validator: Arc<Mutex<ShaclValidator>>,
 ) -> anyhow::Result<()> {
+    let write_key = Arc::new(write_key);
     let mut server = if !cors_origins.is_empty() {
         let v = Arc::clone(&validator);
+        let wk = Arc::clone(&write_key);
         let origins = cors_origins.clone();
         Server::new(cors_middleware(
             move |request| {
-                handle_request(request, store.clone(), Arc::clone(&v), query_timeout, max_upload_size)
+                handle_request(request, store.clone(), Arc::clone(&v), query_timeout, max_upload_size, &wk)
                     .unwrap_or_else(|(status, message)| error(status, message))
             },
             origins,
         ))
     } else {
         let v = Arc::clone(&validator);
+        let wk = Arc::clone(&write_key);
         Server::new(move |request| {
-            handle_request(request, store.clone(), Arc::clone(&v), query_timeout, max_upload_size)
+            handle_request(request, store.clone(), Arc::clone(&v), query_timeout, max_upload_size, &wk)
                 .unwrap_or_else(|(status, message)| error(status, message))
         })
     }
@@ -206,19 +230,22 @@ fn serve(
 }
 
 #[cfg(not(feature = "shacl"))]
-fn serve(store: Store, bind: &str, cors_origins: String, query_timeout: Duration, max_upload_size: u64) -> anyhow::Result<()> {
+fn serve(store: Store, bind: &str, cors_origins: String, query_timeout: Duration, max_upload_size: u64, write_key: Option<String>) -> anyhow::Result<()> {
+    let write_key = Arc::new(write_key);
     let mut server = if !cors_origins.is_empty() {
+        let wk = Arc::clone(&write_key);
         let origins = cors_origins.clone();
         Server::new(cors_middleware(
             move |request| {
-                handle_request(request, store.clone(), query_timeout, max_upload_size)
+                handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
                     .unwrap_or_else(|(status, message)| error(status, message))
             },
             origins,
         ))
     } else {
+        let wk = Arc::clone(&write_key);
         Server::new(move |request| {
-            handle_request(request, store.clone(), query_timeout, max_upload_size)
+            handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
                 .unwrap_or_else(|(status, message)| error(status, message))
         })
     }
@@ -310,19 +337,22 @@ fn handle_request(
     validator: Arc<Mutex<ShaclValidator>>,
     query_timeout: Duration,
     max_upload_size: u64,
+    write_key: &Option<String>,
 ) -> Result<Response<Body>, HttpError> {
     let method = request.method().as_ref().to_owned();
     let path = request.uri().path().to_owned();
     tracing::info!(method = %method, path = %path, "Incoming request");
 
     match (path.as_str(), method.as_str()) {
-        // --- SHACL endpoints ---
+        // --- SHACL endpoints (write operations require auth) ---
         ("/shacl/shapes", "POST") => {
+            check_write_auth(request, write_key)?;
             tracing::info!("SHACL shapes upload");
             handle_shacl_upload_shapes(request, &validator)
         }
         ("/shacl/shapes", "GET") => handle_shacl_get_shapes(&validator),
         ("/shacl/shapes", "DELETE") => {
+            check_write_auth(request, write_key)?;
             tracing::info!("SHACL shapes delete");
             handle_shacl_delete_shapes(&validator)
         }
@@ -332,12 +362,13 @@ fn handle_request(
         }
         ("/shacl/mode", "GET") => handle_shacl_get_mode(&validator),
         ("/shacl/mode", "PUT") => {
+            check_write_auth(request, write_key)?;
             tracing::info!("SHACL mode update");
             handle_shacl_set_mode(request, &validator)
         }
 
         // --- Everything else ---
-        _ => handle_request_core(request, store, query_timeout, max_upload_size),
+        _ => handle_request_core(request, store, query_timeout, max_upload_size, write_key),
     }
 }
 
@@ -347,11 +378,12 @@ fn handle_request(
     store: Store,
     query_timeout: Duration,
     max_upload_size: u64,
+    write_key: &Option<String>,
 ) -> Result<Response<Body>, HttpError> {
     let method = request.method().as_ref().to_owned();
     let path = request.uri().path().to_owned();
     tracing::info!(method = %method, path = %path, "Incoming request");
-    handle_request_core(request, store, query_timeout, max_upload_size)
+    handle_request_core(request, store, query_timeout, max_upload_size, write_key)
 }
 
 fn handle_request_core(
@@ -359,9 +391,10 @@ fn handle_request_core(
     store: Store,
     query_timeout: Duration,
     max_upload_size: u64,
+    write_key: &Option<String>,
 ) -> Result<Response<Body>, HttpError> {
     match (request.uri().path(), request.method().as_ref()) {
-        // --- Health & readiness ---
+        // --- Health & readiness (always open) ---
         ("/health", "GET") => Response::builder()
             .status(StatusCode::OK)
             .header(CONTENT_TYPE, "text/plain")
@@ -369,7 +402,6 @@ fn handle_request_core(
             .map_err(internal_server_error),
 
         ("/ready", "GET") => {
-            // Probe the store to verify it is accessible
             let _ = store.is_empty().map_err(internal_server_error)?;
             Response::builder()
                 .status(StatusCode::OK)
@@ -378,7 +410,7 @@ fn handle_request_core(
                 .map_err(internal_server_error)
         }
 
-        // --- Root page ---
+        // --- Root page (always open) ---
         ("/", "GET") => Response::builder()
             .header(CONTENT_TYPE, "text/html; charset=utf-8")
             .body(
@@ -390,7 +422,7 @@ fn handle_request_core(
             )
             .map_err(internal_server_error),
 
-        // --- SPARQL Query ---
+        // --- SPARQL Query (reads are open) ---
         ("/query", "GET") => {
             tracing::info!("SPARQL query via GET");
             let query = url_query_parameter(request, "query")
@@ -417,8 +449,9 @@ fn handle_request_core(
             }
         }
 
-        // --- SPARQL Update ---
+        // --- SPARQL Update (write — requires auth) ---
         ("/update", "POST") => {
+            check_write_auth(request, write_key)?;
             tracing::info!("SPARQL UPDATE");
             let ct = content_type(request)
                 .ok_or_else(|| bad_request("No Content-Type given"))?;
@@ -437,8 +470,9 @@ fn handle_request_core(
             }
         }
 
-        // --- Graph Store Protocol: load data (SEC-14: body size limit) ---
+        // --- Graph Store Protocol: load data (write — requires auth) ---
         ("/store", "POST") => {
+            check_write_auth(request, write_key)?;
             tracing::info!("Store POST (graph upload)");
             let ct = content_type(request)
                 .ok_or_else(|| bad_request("No Content-Type given"))?;
@@ -926,6 +960,36 @@ fn error(status: StatusCode, message: impl fmt::Display) -> Response<Body> {
 
 fn bad_request(message: impl fmt::Display) -> HttpError {
     (StatusCode::BAD_REQUEST, message.to_string())
+}
+
+/// SEC-01: Check write authorization.
+/// If a write key is configured, the request must include a matching
+/// `Authorization: Bearer <key>` header. If no key is configured
+/// (localhost-only mode), all writes are allowed.
+fn check_write_auth(request: &Request<Body>, write_key: &Option<String>) -> Result<(), HttpError> {
+    let Some(expected_key) = write_key else {
+        return Ok(()); // No key configured (localhost mode) — allow
+    };
+
+    let auth_header = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let provided_key = auth_header
+        .strip_prefix("Bearer ")
+        .unwrap_or(auth_header);
+
+    if provided_key == expected_key {
+        Ok(())
+    } else {
+        tracing::warn!(path = %request.uri().path(), "Unauthorized write attempt");
+        Err((
+            StatusCode::UNAUTHORIZED,
+            "Write operations require a valid Authorization: Bearer <key> header".to_string(),
+        ))
+    }
 }
 
 fn unsupported_media_type(content_type: &str) -> HttpError {
