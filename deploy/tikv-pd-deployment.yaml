@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tikv-pd
+  labels:
+    app: tikv-pd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tikv-pd
+  template:
+    metadata:
+      labels:
+        app: tikv-pd
+    spec:
+      containers:
+      - name: pd
+        image: pingcap/pd:v8.5.0
+        command: ["/pd-server"]
+        args:
+        - "--name=pd"
+        - "--client-urls=http://0.0.0.0:2379"
+        - "--peer-urls=http://0.0.0.0:2380"
+        - "--advertise-client-urls=http://tikv-pd:2379"
+        - "--advertise-peer-urls=http://tikv-pd:2380"
+        - "--data-dir=/data/pd"
+        ports:
+        - containerPort: 2379
+          name: client
+        - containerPort: 2380
+          name: peer
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: pd-data
+          mountPath: /data
+      volumes:
+      - name: pd-data
+        emptyDir: {}

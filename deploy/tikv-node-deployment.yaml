@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tikv-node
+  labels:
+    app: tikv-node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tikv-node
+  template:
+    metadata:
+      labels:
+        app: tikv-node
+    spec:
+      containers:
+      - name: tikv
+        image: pingcap/tikv:v8.5.0
+        command: ["/tikv-server"]
+        args:
+        - "--addr=0.0.0.0:20160"
+        - "--advertise-addr=tikv-node:20160"
+        - "--pd=tikv-pd:2379"
+        - "--data-dir=/data/tikv"
+        ports:
+        - containerPort: 20160
+          name: tikv
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        volumeMounts:
+        - name: tikv-data
+          mountPath: /data
+      volumes:
+      - name: tikv-data
+        emptyDir: {}

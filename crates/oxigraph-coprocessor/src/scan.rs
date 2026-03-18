@@ -1,6 +1,6 @@
 //! Index scan operations for Coprocessor pushdown.
 
-use crate::{encoded_term_len, extract_concat_term_bytes};
+use crate::extract_concat_term_bytes;
 
 pub struct ScanResult {
     pub pairs: Vec<(Vec<u8>, Vec<u8>)>,

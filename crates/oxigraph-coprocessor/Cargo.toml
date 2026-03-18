@@ -5,15 +5,13 @@ edition = "2024"
 description = "TiKV Coprocessor plugin for Oxigraph query pushdown"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 siphasher = { version = ">=0.3.10, <2.0" }
 
-# Will need tikv coprocessor plugin API when available
-# coprocessor_plugin_api = "0.1"  # TiKV plugin trait — pin to target TiKV release
-# prost = "0.13"                  # Protobuf decode/encode
-# bytes = "1"
+# TiKV coprocessor_plugin_api types are vendored in src/plugin_api.rs
+# (the upstream crate is publish=false and not on crates.io)
 
 [lints]
 workspace = true

@@ -7,7 +7,7 @@
 //!
 //! # Architecture
 //!
-//! The plugin receives serialized `OxigraphCoprocessorRequest` messages (protobuf)
+//! The plugin receives binary-encoded request messages (see [`protocol`])
 //! and dispatches to one of four operations:
 //!
 //! - [`scan`]: Index scan with optional bloom filter semi-join pruning
@@ -27,6 +27,8 @@
 pub mod aggregate;
 pub mod bloom;
 pub mod filter;
+pub mod plugin_api;
+pub mod protocol;
 pub mod scan;
 
 // ---------------------------------------------------------------------------
@@ -164,53 +166,107 @@ pub fn extract_concat_term_bytes(key: &[u8], positions: &[u32]) -> Result<Vec<u8
 }
 
 // ---------------------------------------------------------------------------
-// Plugin entry point — stubbed until coprocessor_plugin_api is available
+// Plugin entry point
 // ---------------------------------------------------------------------------
 
 /// Unique identifier for this Coprocessor plugin.
 /// The client sends this as the coprocessor request's `tp` field.
 pub const OXIGRAPH_COPROCESSOR_ID: i64 = 10001;
 
-// TODO: Uncomment when coprocessor_plugin_api and prost dependencies are added.
-//
-// use coprocessor_plugin_api::*;
-// use prost::Message;
-//
-// mod proto {
-//     include!(concat!(env!("OUT_DIR"), "/oxigraph.coprocessor.rs"));
-// }
-//
-// use proto::{OxigraphCoprocessorRequest, OxigraphCoprocessorResponse};
-// use proto::oxigraph_coprocessor_request::OpType;
-//
-// #[derive(Default)]
-// pub struct OxigraphCoprocessorPlugin;
-//
-// impl CoprocessorPlugin for OxigraphCoprocessorPlugin {
-//     fn on_raw_coprocessor_request(
-//         &self,
-//         ranges: Vec<Range>,
-//         request: RawRequest,
-//         storage: &dyn RawStorage,
-//     ) -> PluginResult<RawResponse> {
-//         let req = OxigraphCoprocessorRequest::decode(request.as_ref())
-//             .map_err(|e| PluginError::Other(format!("failed to decode request: {e}")))?;
-//
-//         let response = match req.op_type() {
-//             OpType::IndexScan => scan::execute_index_scan(&req, &ranges, storage),
-//             OpType::FilterScan => scan::execute_filter_scan(&req, &ranges, storage),
-//             OpType::CountScan => aggregate::execute_count_scan(&req, &ranges, storage),
-//             OpType::MinMaxScan => aggregate::execute_min_max_scan(&req, &ranges, storage),
-//         }?;
-//
-//         let mut buf = Vec::with_capacity(response.encoded_len());
-//         response.encode(&mut buf)
-//             .map_err(|e| PluginError::Other(format!("failed to encode response: {e}")))?;
-//         Ok(buf)
-//     }
-// }
-//
-// declare_plugin!(OxigraphCoprocessorPlugin::default());
+use plugin_api::{
+    CoprocessorPlugin, Key, PluginError, PluginResult, RawRequest, RawResponse, RawStorage,
+};
+use protocol::{
+    OpType, decode_request, encode_count_response, encode_min_max_response, encode_scan_response,
+};
+use scan::{IndexScanParams, execute_index_scan};
+use std::ops::Range;
+
+/// The Oxigraph TiKV Coprocessor plugin.
+///
+/// Dispatches incoming binary requests to the scan, filter, aggregate, or
+/// min/max modules operating on Region-local data via [`RawStorage`].
+#[derive(Default)]
+pub struct OxigraphCoprocessorPlugin;
+
+impl CoprocessorPlugin for OxigraphCoprocessorPlugin {
+    fn on_raw_coprocessor_request(
+        &self,
+        ranges: Vec<Range<Key>>,
+        request: RawRequest,
+        storage: &dyn RawStorage,
+    ) -> PluginResult<RawResponse> {
+        let req = decode_request(&request).map_err(|e| {
+            PluginError::Other(
+                format!("failed to decode request: {e}"),
+                Box::new(()),
+            )
+        })?;
+
+        // Collect all KV pairs from the requested ranges via RawStorage.
+        let mut all_pairs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+        for range in &ranges {
+            let pairs = storage.scan(range.clone())?;
+            all_pairs.extend(pairs);
+        }
+
+        match req.op_type {
+            OpType::IndexScan => {
+                let params = IndexScanParams {
+                    table_prefix: req.table_prefix,
+                    key_prefix: req.key_prefix,
+                    limit: 0,
+                    bloom_filter: req.bloom_filter,
+                    bloom_positions: vec![],
+                };
+                let result = execute_index_scan(
+                    &params,
+                    all_pairs.iter().map(|(k, v)| (k.as_slice(), v.as_slice())),
+                );
+                Ok(encode_scan_response(result.scanned_keys, &result.pairs))
+            }
+            OpType::FilterScan => {
+                // FilterScan uses the same index scan but applies byte-level
+                // filter predicates. For now, delegate to IndexScan (filter
+                // predicates would be encoded in an extended request format).
+                let params = IndexScanParams {
+                    table_prefix: req.table_prefix,
+                    key_prefix: req.key_prefix,
+                    limit: 0,
+                    bloom_filter: req.bloom_filter,
+                    bloom_positions: vec![],
+                };
+                let result = execute_index_scan(
+                    &params,
+                    all_pairs.iter().map(|(k, v)| (k.as_slice(), v.as_slice())),
+                );
+                Ok(encode_scan_response(result.scanned_keys, &result.pairs))
+            }
+            OpType::CountScan => {
+                let result = aggregate::execute_count(
+                    req.table_prefix,
+                    &req.key_prefix,
+                    all_pairs.iter().map(|(k, v)| (k.as_slice(), v.as_slice())),
+                );
+                Ok(encode_count_response(result.scanned_keys, result.count))
+            }
+            OpType::MinMaxScan => {
+                let result = aggregate::execute_min_max(
+                    req.table_prefix,
+                    &req.key_prefix,
+                    all_pairs.iter().map(|(k, v)| (k.as_slice(), v.as_slice())),
+                );
+                Ok(encode_min_max_response(
+                    result.scanned_keys,
+                    result.min_key.as_deref(),
+                    result.max_key.as_deref(),
+                ))
+            }
+        }
+    }
+}
+
+declare_plugin!(OxigraphCoprocessorPlugin::default());
 
 #[cfg(test)]
 mod tests {

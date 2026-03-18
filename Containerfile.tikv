@@ -1,0 +1,54 @@
+# =============================================================================
+# Oxigraph Cloud-Native: TiKV-enabled build
+# =============================================================================
+# Includes both RocksDB and TiKV backends. Larger image due to OpenSSL/gRPC.
+#
+# Usage:
+#   podman build -t oxigraph-cloud:tikv -f Containerfile.tikv .
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Builder
+# ---------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
+
+RUN dnf install -y --allowerasing gcc gcc-c++ make cmake clang llvm-devel curl git \
+        openssl-devel perl-FindBin perl-File-Compare protobuf-compiler && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 && \
+    dnf clean all
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+WORKDIR /usr/src/app
+
+COPY Cargo.toml Cargo.lock ./
+COPY oxigraph/ oxigraph/
+COPY crates/ crates/
+COPY tests/ tests/
+
+# Build with both RocksDB and TiKV features (no SHACL for UBI 9 compat)
+RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb,tikv && \
+    cp target/release/oxigraph-cloud /usr/local/bin/oxigraph-cloud && \
+    strip /usr/local/bin/oxigraph-cloud
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi-micro:latest
+
+LABEL name="oxigraph-cloud" \
+      summary="Cloud-native Oxigraph with TiKV distributed storage" \
+      io.k8s.display-name="Oxigraph Cloud (TiKV)" \
+      io.openshift.tags="rdf,sparql,triplestore,tikv"
+
+# tikv-client statically links OpenSSL/gRPC — only libstdc++ needed at runtime
+COPY --from=builder /usr/lib64/libstdc++.so.6* /usr/lib64/
+COPY --from=builder /usr/local/bin/oxigraph-cloud /usr/local/bin/oxigraph-cloud
+
+RUN mkdir -p /opt/oxigraph/data && chmod -R 775 /opt/oxigraph
+
+EXPOSE 7878
+USER 1001
+WORKDIR /opt/oxigraph
+
+ENTRYPOINT ["/usr/local/bin/oxigraph-cloud"]
+CMD ["--backend", "tikv", "--pd-endpoints", "tikv-pd:2379", "--bind", "0.0.0.0:7878"]
