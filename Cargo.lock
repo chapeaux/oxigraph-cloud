@@ -2424,6 +2424,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxigraph-coprocessor"
+version = "0.1.0"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
 name = "oxigraph-js"
 version = "0.5.6"
 dependencies = [

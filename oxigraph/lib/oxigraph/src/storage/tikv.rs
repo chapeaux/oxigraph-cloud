@@ -15,6 +15,7 @@ use crate::storage::numeric_encoder::{
     EncodedQuad, EncodedTerm, StrHash, StrLookup, insert_term,
 };
 use oxrdf::Quad;
+use std::cell::RefCell;
 use std::sync::Arc;
 use tikv_client::{BoundRange, Key, KvPair, TransactionClient};
 use tokio::runtime::Runtime;
@@ -186,9 +187,14 @@ impl TiKvStorage {
     }
 
     pub fn snapshot(&self) -> TiKvStorageReader<'static> {
+        let txn = self
+            .inner
+            .runtime
+            .block_on(self.inner.client.begin_optimistic())
+            .expect("failed to begin snapshot transaction");
         TiKvStorageReader {
             storage: self.clone(),
-            _marker: std::marker::PhantomData,
+            txn: TiKvReaderTxn::Owned(RefCell::new(Some(txn))),
         }
     }
 
@@ -200,7 +206,7 @@ impl TiKvStorage {
             .map_err(map_tikv_error)?;
         Ok(TiKvStorageTransaction {
             buffer: Vec::new(),
-            txn,
+            txn: Some(txn),
             storage: self,
         })
     }
@@ -215,7 +221,7 @@ impl TiKvStorage {
             .map_err(map_tikv_error)?;
         Ok(TiKvStorageReadableTransaction {
             buffer: Vec::new(),
-            txn,
+            txn: Some(RefCell::new(txn)),
             storage: self,
         })
     }
@@ -239,11 +245,39 @@ impl TiKvStorage {
 
 // --- Reader ---
 
-#[derive(Clone)]
+/// Holds either an owned or borrowed transaction so that
+/// `TiKvStorageReader` can be created from `snapshot()` (owned) or from
+/// `TiKvStorageReadableTransaction::reader()` (borrowed).
+enum TiKvReaderTxn<'a> {
+    Owned(RefCell<Option<tikv_client::Transaction>>),
+    Borrowed(&'a RefCell<tikv_client::Transaction>),
+}
+
+impl<'a> TiKvReaderTxn<'a> {
+    fn borrow_mut(&self) -> std::cell::RefMut<'_, tikv_client::Transaction> {
+        match self {
+            TiKvReaderTxn::Owned(cell) => std::cell::RefMut::map(cell.borrow_mut(), |opt| {
+                opt.as_mut().expect("transaction already consumed")
+            }),
+            TiKvReaderTxn::Borrowed(cell) => cell.borrow_mut(),
+        }
+    }
+}
+
 #[must_use]
 pub struct TiKvStorageReader<'a> {
     storage: TiKvStorage,
-    _marker: std::marker::PhantomData<&'a ()>,
+    txn: TiKvReaderTxn<'a>,
+}
+
+impl Drop for TiKvStorageReader<'_> {
+    fn drop(&mut self) {
+        if let TiKvReaderTxn::Owned(cell) = &self.txn {
+            if let Some(mut txn) = cell.borrow_mut().take() {
+                let _ = self.storage.runtime().block_on(txn.rollback());
+            }
+        }
+    }
 }
 
 impl<'a> TiKvStorageReader<'a> {
@@ -717,95 +751,48 @@ impl<'a> TiKvStorageReader<'a> {
 
     fn contains_key(&self, table: u8, key: &[u8]) -> Result<bool, StorageError> {
         let full_key = prefixed_key(table, key);
-        let mut txn = self
-            .storage
-            .inner
-            .runtime
-            .block_on(self.storage.inner.client.begin_optimistic())
-            .map_err(map_tikv_error)?;
-        let result = self
-            .storage
+        let mut txn = self.txn.borrow_mut();
+        self.storage
             .inner
             .runtime
             .block_on(txn.key_exists(full_key))
-            .map_err(map_tikv_error)?;
-        // We don't need to commit a read-only txn, just rollback
-        drop(self
-            .storage
-            .inner
-            .runtime
-            .block_on(txn.rollback()));
-        Ok(result)
+            .map_err(map_tikv_error)
     }
 
     fn get_value(&self, table: u8, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
         let full_key = prefixed_key(table, key);
-        let mut txn = self
-            .storage
-            .inner
-            .runtime
-            .block_on(self.storage.inner.client.begin_optimistic())
-            .map_err(map_tikv_error)?;
-        let result = self
-            .storage
+        let mut txn = self.txn.borrow_mut();
+        self.storage
             .inner
             .runtime
             .block_on(txn.get(full_key))
-            .map_err(map_tikv_error)?;
-        drop(self
-            .storage
-            .inner
-            .runtime
-            .block_on(txn.rollback()));
-        Ok(result)
+            .map_err(map_tikv_error)
     }
 
     fn scan_prefix(&self, table: u8, prefix: &[u8]) -> Result<Vec<KvPair>, StorageError> {
         let full_prefix = prefixed_key(table, prefix);
         let range = prefix_range(&full_prefix);
-        let mut txn = self
-            .storage
-            .inner
-            .runtime
-            .block_on(self.storage.inner.client.begin_optimistic())
-            .map_err(map_tikv_error)?;
+        let mut txn = self.txn.borrow_mut();
         let pairs = self
             .storage
             .inner
             .runtime
             .block_on(txn.scan(range, u32::MAX))
             .map_err(map_tikv_error)?;
-        let result: Vec<KvPair> = pairs.collect();
-        drop(self
-            .storage
-            .inner
-            .runtime
-            .block_on(txn.rollback()));
-        Ok(result)
+        Ok(pairs.collect())
     }
 
     fn scan_prefix_keys(&self, table: u8, prefix: &[u8]) -> Result<Vec<Key>, StorageError> {
         let full_prefix = prefixed_key(table, prefix);
         let range = prefix_range(&full_prefix);
-        let mut txn = self
-            .storage
-            .inner
-            .runtime
-            .block_on(self.storage.inner.client.begin_optimistic())
-            .map_err(map_tikv_error)?;
+        let mut txn = self.txn.borrow_mut();
         let keys = self
             .storage
             .inner
             .runtime
             .block_on(txn.scan_keys(range, u32::MAX))
             .map_err(map_tikv_error)?;
-        let result: Vec<Key> = keys.collect();
-        drop(self
-            .storage
-            .inner
-            .runtime
-            .block_on(txn.rollback()));
-        Ok(result)
+        Ok(keys.collect())
     }
 
     fn scan_prefix_keys_limit(
@@ -816,25 +803,14 @@ impl<'a> TiKvStorageReader<'a> {
     ) -> Result<Vec<Key>, StorageError> {
         let full_prefix = prefixed_key(table, prefix);
         let range = prefix_range(&full_prefix);
-        let mut txn = self
-            .storage
-            .inner
-            .runtime
-            .block_on(self.storage.inner.client.begin_optimistic())
-            .map_err(map_tikv_error)?;
+        let mut txn = self.txn.borrow_mut();
         let keys = self
             .storage
             .inner
             .runtime
             .block_on(txn.scan_keys(range, limit))
             .map_err(map_tikv_error)?;
-        let result: Vec<Key> = keys.collect();
-        drop(self
-            .storage
-            .inner
-            .runtime
-            .block_on(txn.rollback()));
-        Ok(result)
+        Ok(keys.collect())
     }
 }
 
@@ -1036,7 +1012,7 @@ impl Iterator for TiKvDecodingGraphIterator {
 #[must_use]
 pub struct TiKvStorageTransaction<'a> {
     buffer: Vec<u8>,
-    txn: tikv_client::Transaction,
+    txn: Option<tikv_client::Transaction>,
     storage: &'a TiKvStorage,
 }
 
@@ -1118,7 +1094,7 @@ impl TiKvStorageTransaction<'_> {
         let full_key = prefixed_key(TABLE_ID2STR, &key.to_be_bytes());
         // Best effort — errors on individual puts are deferred to commit
         let _ = self.storage.runtime().block_on(
-            self.txn.put(full_key, value.as_bytes().to_vec()),
+            self.txn.as_mut().unwrap().put(full_key, value.as_bytes().to_vec()),
         );
     }
 
@@ -1196,9 +1172,10 @@ impl TiKvStorageTransaction<'_> {
     }
 
     pub fn commit(mut self) -> Result<(), StorageError> {
+        let mut txn = self.txn.take().unwrap();
         self.storage
             .runtime()
-            .block_on(self.txn.commit())
+            .block_on(txn.commit())
             .map_err(map_tikv_error)?;
         Ok(())
     }
@@ -1208,7 +1185,7 @@ impl TiKvStorageTransaction<'_> {
         let _ = self
             .storage
             .runtime()
-            .block_on(self.txn.put(full_key, vec![]));
+            .block_on(self.txn.as_mut().unwrap().put(full_key, vec![]));
     }
 
     fn delete_key(&mut self, table: u8, key: &[u8]) {
@@ -1216,7 +1193,7 @@ impl TiKvStorageTransaction<'_> {
         let _ = self
             .storage
             .runtime()
-            .block_on(self.txn.delete(full_key));
+            .block_on(self.txn.as_mut().unwrap().delete(full_key));
     }
 
     fn delete_prefix(&mut self, table: u8) {
@@ -1226,11 +1203,20 @@ impl TiKvStorageTransaction<'_> {
         let keys = self
             .storage
             .runtime()
-            .block_on(self.txn.scan_keys(range, u32::MAX));
+            .block_on(self.txn.as_mut().unwrap().scan_keys(range, u32::MAX));
         if let Ok(keys) = keys {
+            let keys: Vec<Key> = keys.collect();
             for key in keys {
-                let _ = self.storage.runtime().block_on(self.txn.delete(key));
+                let _ = self.storage.runtime().block_on(self.txn.as_mut().unwrap().delete(key));
             }
+        }
+    }
+}
+
+impl Drop for TiKvStorageTransaction<'_> {
+    fn drop(&mut self) {
+        if let Some(mut txn) = self.txn.take() {
+            let _ = self.storage.runtime().block_on(txn.rollback());
         }
     }
 }
@@ -1240,19 +1226,16 @@ impl TiKvStorageTransaction<'_> {
 #[must_use]
 pub struct TiKvStorageReadableTransaction<'a> {
     buffer: Vec<u8>,
-    txn: tikv_client::Transaction,
+    txn: Option<RefCell<tikv_client::Transaction>>,
     storage: &'a TiKvStorage,
 }
 
 impl TiKvStorageReadableTransaction<'_> {
     pub fn reader(&self) -> TiKvStorageReader<'_> {
-        // The reader uses snapshot reads from the storage, which gives a consistent view.
-        // For a readable transaction, we return a reader that reads from the current storage state.
-        // Note: this doesn't see uncommitted writes from this transaction, but matches
-        // the pattern used by RocksDB readable transactions.
+        // The reader borrows the same transaction, so it sees uncommitted writes.
         TiKvStorageReader {
             storage: self.storage.clone(),
-            _marker: std::marker::PhantomData,
+            txn: TiKvReaderTxn::Borrowed(self.txn.as_ref().unwrap()),
         }
     }
 
@@ -1332,7 +1315,7 @@ impl TiKvStorageReadableTransaction<'_> {
     fn insert_str(&mut self, key: &StrHash, value: &str) {
         let full_key = prefixed_key(TABLE_ID2STR, &key.to_be_bytes());
         let _ = self.storage.runtime().block_on(
-            self.txn.put(full_key, value.as_bytes().to_vec()),
+            self.txn.as_ref().unwrap().borrow_mut().put(full_key, value.as_bytes().to_vec()),
         );
     }
 
@@ -1458,9 +1441,10 @@ impl TiKvStorageReadableTransaction<'_> {
     }
 
     pub fn commit(mut self) -> Result<(), StorageError> {
+        let mut txn = self.txn.take().unwrap().into_inner();
         self.storage
             .runtime()
-            .block_on(self.txn.commit())
+            .block_on(txn.commit())
             .map_err(map_tikv_error)?;
         Ok(())
     }
@@ -1470,7 +1454,7 @@ impl TiKvStorageReadableTransaction<'_> {
         let _ = self
             .storage
             .runtime()
-            .block_on(self.txn.put(full_key, vec![]));
+            .block_on(self.txn.as_ref().unwrap().borrow_mut().put(full_key, vec![]));
     }
 
     fn delete_key(&mut self, table: u8, key: &[u8]) {
@@ -1478,7 +1462,15 @@ impl TiKvStorageReadableTransaction<'_> {
         let _ = self
             .storage
             .runtime()
-            .block_on(self.txn.delete(full_key));
+            .block_on(self.txn.as_ref().unwrap().borrow_mut().delete(full_key));
+    }
+}
+
+impl Drop for TiKvStorageReadableTransaction<'_> {
+    fn drop(&mut self) {
+        if let Some(cell) = self.txn.take() {
+            let _ = self.storage.runtime().block_on(cell.into_inner().rollback());
+        }
     }
 }
 

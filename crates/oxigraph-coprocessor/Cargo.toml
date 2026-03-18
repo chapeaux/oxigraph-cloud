@@ -1,0 +1,19 @@
+[package]
+name = "oxigraph-coprocessor"
+version = "0.1.0"
+edition = "2024"
+description = "TiKV Coprocessor plugin for Oxigraph query pushdown"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+siphasher = { version = ">=0.3.10, <2.0" }
+
+# Will need tikv coprocessor plugin API when available
+# coprocessor_plugin_api = "0.1"  # TiKV plugin trait — pin to target TiKV release
+# prost = "0.13"                  # Protobuf decode/encode
+# bytes = "1"
+
+[lints]
+workspace = true

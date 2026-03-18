@@ -23,6 +23,7 @@ members = [
     "crates/oxigraph-tikv",
     "crates/oxigraph-shacl",
     "crates/oxigraph-server",
+    "crates/oxigraph-coprocessor",
 ]
 resolver = "2"
 
