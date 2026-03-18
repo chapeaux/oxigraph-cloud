@@ -12,7 +12,9 @@ Oxigraph Cloud-Native extends the [Oxigraph](https://github.com/oxigraph/oxigrap
 
 - **SPARQL 1.1 query and update** -- full compliance inherited from upstream Oxigraph
 - **Pluggable storage backends** -- RocksDB (embedded, single-node) and TiKV (distributed, Raft-replicated), selectable at startup via `--backend`
-- **SHACL validation via rudof** -- three modes: Off (default), Warn (log but accept), Enforce/Strict (reject with HTTP 422)
+- **SHACL validation via rudof** -- three modes: Off (default), Warn (log but accept), Enforce (reject with HTTP 422)
+- **Write authentication** -- API key protection for write operations via `--write-key` or `OXIGRAPH_WRITE_KEY`
+- **TiKV Coprocessor pushdown** -- scan, filter, aggregate, and bloom filter semi-join operations pushed to Region-local execution
 - **Cloud-native deployment** -- Helm chart with OpenShift Route support, health/readiness probes, network policies
 - **Structured JSON logging** -- machine-parseable log output via `tracing-subscriber`
 - **Configurable query timeouts** -- per-query execution time limits via `--query-timeout`
@@ -199,11 +201,11 @@ curl -X POST http://127.0.0.1:7878/shacl/shapes \
 
 ```bash
 curl -X PUT http://127.0.0.1:7878/shacl/mode \
-  -H "Content-Type: text/plain" \
-  -d 'enforce'
+  -H "Content-Type: application/json" \
+  -d '{"mode": "enforce"}'
 ```
 
-Supported modes: `off`, `warn`, `strict` (alias: `enforce`).
+Supported modes: `off`, `warn`, `enforce` (alias: `strict`).
 
 ### Trigger on-demand validation
 
@@ -224,7 +226,8 @@ For the full API specification, see [docs/shacl-api-spec.md](docs/shacl-api-spec
 | `--pd-endpoints` | `127.0.0.1:2379` | TiKV PD endpoints (comma-separated) |
 | `--bind` | `127.0.0.1:7878` | HTTP server bind address |
 | `--location` | (none) | RocksDB data directory; omit for in-memory storage |
-| `--shacl-mode` | `off` | SHACL validation mode: `off`, `strict`, `warn` |
+| `--shacl-mode` | `off` | SHACL validation mode: `off`, `enforce`, `warn` |
+| `--write-key` | (none) | API key for write operations (env: `OXIGRAPH_WRITE_KEY`) |
 | `--cors-origins` | (empty) | CORS allowed origins: `*` for wildcard, or comma-separated list |
 | `--query-timeout` | `30` | Query execution timeout in seconds |
 | `--max-upload-size` | `134217728` | Maximum upload body size in bytes (default 128 MB) |
@@ -234,21 +237,32 @@ For the full API specification, see [docs/shacl-api-spec.md](docs/shacl-api-spec
 Oxigraph Cloud-Native is organized as a Cargo workspace with the forked Oxigraph source and additional crates for TiKV integration and SHACL validation.
 
 ```
-oxigraph-k8s/
-  oxigraph/                  # Forked Oxigraph (core SPARQL engine)
+oxigraph-cloud/
+  oxigraph/                    # Forked Oxigraph (core SPARQL engine)
     lib/oxigraph/src/
       storage/
-        backend_trait.rs     # StorageBackend trait hierarchy
-        rocksdb.rs           # RocksDB backend
-        tikv.rs              # TiKV backend (feature-gated)
-        memory.rs            # In-memory backend
-      store.rs               # Public Store API
-      sparql/                # SPARQL evaluation
+        backend_trait.rs       # StorageBackend trait hierarchy
+        rocksdb.rs             # RocksDB backend
+        tikv.rs                # TiKV backend (feature-gated)
+        memory.rs              # In-memory backend
+      store.rs                 # Public Store API
+      sparql/                  # SPARQL evaluation
   crates/
-    oxigraph-server/         # HTTP server binary (CLI)
-    oxigraph-tikv/           # TiKV config types and integration tests
-    oxigraph-shacl/          # SHACL validation via rudof
-  helm/oxigraph-cloud/       # Helm chart
+    oxigraph-server/           # HTTP server binary (CLI)
+    oxigraph-tikv/             # TiKV config types and integration tests
+    oxigraph-shacl/            # SHACL validation via rudof
+    oxigraph-coprocessor/      # TiKV Coprocessor plugin (cdylib)
+  deploy/
+    helm/oxigraph-cloud/       # Helm chart (default, tikv, sandbox values)
+    k8s/                       # Raw Kubernetes manifests
+    openshift/                 # OpenShift Kustomize overlay
+    monitoring/                # Prometheus ServiceMonitor + Grafana dashboard
+    docker-compose.yml         # Local PD + TiKV + Oxigraph stack
+  tests/
+    benchmark/                 # Criterion benchmarks
+    chaos/                     # Chaos testing scripts
+    data/                      # Sample RDF dataset + SHACL shapes
+    integration/               # SPARQL roundtrip + bulk load tests
 ```
 
 Key design decisions:
@@ -317,11 +331,24 @@ cargo bench -p oxigraph --features tikv
 
 | Document | Description |
 |----------|-------------|
-| [docs/architecture-guide.md](docs/architecture-guide.md) | Comprehensive architecture guide for contributors |
+| [docs/architecture-guide.md](docs/architecture-guide.md) | System overview, component roles, data flow |
+| [docs/api-reference.md](docs/api-reference.md) | SPARQL, SHACL, health endpoint reference |
 | [docs/tikv-key-encoding.md](docs/tikv-key-encoding.md) | Column family to key prefix mapping |
-| [docs/tikv-operations-guide.md](docs/tikv-operations-guide.md) | TiKV cluster sizing, tuning, backup/restore |
+| [docs/tikv-dev-setup.md](docs/tikv-dev-setup.md) | Local TiKV cluster setup (tiup / Docker Compose) |
+| [docs/tikv-sizing-guide.md](docs/tikv-sizing-guide.md) | Cluster sizing by dataset size |
+| [docs/tikv-tuning.md](docs/tikv-tuning.md) | Region, write, read, and GC tuning |
+| [docs/tikv-operations-guide.md](docs/tikv-operations-guide.md) | TiKV cluster operations guide |
+| [docs/backup-restore.md](docs/backup-restore.md) | TiKV BR backup/restore procedures |
 | [docs/shacl-api-spec.md](docs/shacl-api-spec.md) | SHACL REST API specification |
+| [docs/coprocessor-pushdown-mapping.md](docs/coprocessor-pushdown-mapping.md) | SPARQL operator → Coprocessor mapping |
 | [docs/sandbox-quickstart.md](docs/sandbox-quickstart.md) | Developer Sandbox deployment guide |
+| [docs/security-deployment.md](docs/security-deployment.md) | TLS, auth, network policies, container security |
+| [docs/operations-runbook.md](docs/operations-runbook.md) | Day-to-day operations and incident response |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Common issues and solutions |
+| [docs/test-plan.md](docs/test-plan.md) | Test strategy across all phases |
+| [docs/conformance-report.md](docs/conformance-report.md) | W3C SPARQL/SHACL conformance results |
+| [docs/benchmark-results.md](docs/benchmark-results.md) | TiKV vs RocksDB performance comparison |
+| [docs/security-audit-report.md](docs/security-audit-report.md) | cargo audit and license check results |
 | [docs/test-conformance-suite.md](docs/test-conformance-suite.md) | Backend conformance test specification |
 | [docs/query-optimization-design.md](docs/query-optimization-design.md) | Coprocessor pushdown and query optimization |
 | [docs/security-compliance-assessment.md](docs/security-compliance-assessment.md) | Security and compliance assessment |

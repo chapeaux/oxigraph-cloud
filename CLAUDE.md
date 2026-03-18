@@ -1,10 +1,36 @@
 # Oxigraph Cloud-Native: TiKV & Rudof Integration
 
-Using a team of agents, plan, implement, test, and distribute (via OpenShift and a separate Developer Sandbox variation) a cloud-native, distributed version of Oxigraph with TiKV storage and Rudof-based SHACL validation.
+Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases complete.
+
+## Project Structure
+
+| Path | Purpose |
+|------|---------|
+| `oxigraph/` | Forked Oxigraph with StorageBackend trait (RocksDB, TiKV, Memory) |
+| `crates/oxigraph-server/` | HTTP server binary (SPARQL, SHACL, health endpoints) |
+| `crates/oxigraph-shacl/` | SHACL validation via rudof (validator, shapes, report) |
+| `crates/oxigraph-tikv/` | TiKV config types and integration tests |
+| `crates/oxigraph-coprocessor/` | TiKV Coprocessor plugin (scan, filter, aggregate, bloom) |
+| `deploy/helm/oxigraph-cloud/` | Helm chart (values.yaml, values-tikv.yaml, values-sandbox.yaml) |
+| `deploy/k8s/` | Raw Kubernetes manifests |
+| `deploy/openshift/` | OpenShift Kustomize overlay (Route, RBAC) |
+| `deploy/docker-compose.yml` | Local PD + TiKV + Oxigraph stack |
+| `tests/benchmark/` | Criterion benchmarks |
+| `tests/chaos/` | Chaos testing scripts (kill-pod, concurrent-load) |
+| `PLAN.md` | Full 8-phase implementation plan |
+
+## Key Implementation Details
+
+- **StorageBackend trait**: `oxigraph/lib/oxigraph/src/storage/backend_trait.rs`
+- **TiKV backend**: `oxigraph/lib/oxigraph/src/storage/tikv.rs` (~1520 lines)
+- **Server**: `crates/oxigraph-server/src/main.rs` — SHACL validation-on-ingest wired into `/update` and `/store POST`
+- **SHACL mode flag**: `--shacl-mode off|warn|enforce` (server accepts `strict` as alias for `enforce`)
+- **SHACL mode API**: `PUT /shacl/mode` expects JSON body `{"mode": "enforce"}`
+- **Write auth**: `--write-key` or `OXIGRAPH_WRITE_KEY` env var, `Authorization: Bearer <key>` header
+- **Container images**: `quay.io/ldary/oxigraph-cloud:0.5.7` (RocksDB only, 41.6MB), `:0.5.7-tikv` (both backends, 46.8MB)
+- **Base image**: `ubi9/ubi-micro` (near-zero CVEs)
 
 ## Reference Documentation
-
-The architecture research is split into focused documents under `docs/`:
 
 | File | Content |
 |------|---------|
@@ -16,5 +42,3 @@ The architecture research is split into focused documents under `docs/`:
 | `docs/06-backend-alternatives-rejected.md` | FoundationDB, DynamoDB, S3/Parquet — why rejected |
 | `docs/07-storage-trait-design.md` | StorageBackend trait design, async considerations |
 | `docs/08-references.md` | All external references and links |
-
-The original monolithic document is preserved in `cloud-native-oxigraph.md`.
