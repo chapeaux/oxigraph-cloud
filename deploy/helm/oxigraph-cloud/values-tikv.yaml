@@ -1,0 +1,20 @@
+# TiKV backend overlay values
+# Usage: helm install oxigraph-cloud ./deploy/helm/oxigraph-cloud -f values-tikv.yaml
+
+backend:
+  type: tikv
+  tikv:
+    pdEndpoints: "tikv-pd:2379"
+
+# Disable local persistence (TiKV handles storage)
+persistence:
+  enabled: false
+
+# Higher resources for distributed mode
+resources:
+  requests:
+    cpu: "1"
+    memory: 1Gi
+  limits:
+    cpu: "4"
+    memory: 4Gi

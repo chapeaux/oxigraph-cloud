@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "oxigraph-cloud.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "oxigraph-cloud.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "oxigraph-cloud.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 7878
+              protocol: TCP
+          args:
+            - "--backend"
+            - {{ .Values.backend.type | quote }}
+            {{- if eq .Values.backend.type "tikv" }}
+            - "--pd-endpoints"
+            - {{ .Values.backend.tikv.pdEndpoints | quote }}
+            {{- else }}
+            - "--location"
+            - "/opt/oxigraph/data"
+            {{- end }}
+            - "--bind"
+            - {{ .Values.server.bind | quote }}
+            - "--shacl-mode"
+            - {{ .Values.shacl.mode | quote }}
+            - "--query-timeout"
+            - {{ .Values.server.queryTimeout | quote }}
+          env:
+            {{- if .Values.auth.writeKey }}
+            - name: OXIGRAPH_WRITE_KEY
+              value: {{ .Values.auth.writeKey | quote }}
+            {{- else if .Values.auth.existingSecret }}
+            - name: OXIGRAPH_WRITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.existingSecretKey }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- if and .Values.persistence.enabled (eq .Values.backend.type "rocksdb") }}
+          volumeMounts:
+            - name: data
+              mountPath: /opt/oxigraph/data
+          {{- end }}
+      {{- if and .Values.persistence.enabled (eq .Values.backend.type "rocksdb") }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "oxigraph-cloud.fullname" . }}-data
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,25 @@
+[package]
+name = "oxigraph-bench"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Criterion benchmarks for Oxigraph Cloud storage and query operations"
+publish = false
+
+[[bench]]
+name = "storage_bench"
+harness = false
+
+[dependencies]
+oxigraph = { workspace = true, default-features = true }
+oxigraph-shacl = { path = "../../crates/oxigraph-shacl" }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+oxigraph = { workspace = true, default-features = true }
+oxigraph-shacl = { path = "../../crates/oxigraph-shacl" }
+
+[lints]
+workspace = true

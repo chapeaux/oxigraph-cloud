@@ -1,0 +1,71 @@
+version: "3.8"
+
+# Local development stack: PD + TiKV + Oxigraph Cloud
+# Usage: docker compose -f deploy/docker-compose.yml up
+
+services:
+  pd:
+    image: pingcap/pd:latest
+    ports:
+      - "2379:2379"
+    command:
+      - "--name=pd"
+      - "--client-urls=http://0.0.0.0:2379"
+      - "--peer-urls=http://0.0.0.0:2380"
+      - "--advertise-client-urls=http://pd:2379"
+      - "--advertise-peer-urls=http://pd:2380"
+      - "--data-dir=/data/pd"
+    volumes:
+      - pd-data:/data/pd
+
+  tikv-0:
+    image: pingcap/tikv:latest
+    depends_on: [pd]
+    command:
+      - "--addr=0.0.0.0:20160"
+      - "--advertise-addr=tikv-0:20160"
+      - "--pd=pd:2379"
+      - "--data-dir=/data/tikv"
+    volumes:
+      - tikv0-data:/data/tikv
+
+  tikv-1:
+    image: pingcap/tikv:latest
+    depends_on: [pd]
+    command:
+      - "--addr=0.0.0.0:20160"
+      - "--advertise-addr=tikv-1:20160"
+      - "--pd=pd:2379"
+      - "--data-dir=/data/tikv"
+    volumes:
+      - tikv1-data:/data/tikv
+
+  tikv-2:
+    image: pingcap/tikv:latest
+    depends_on: [pd]
+    command:
+      - "--addr=0.0.0.0:20160"
+      - "--advertise-addr=tikv-2:20160"
+      - "--pd=pd:2379"
+      - "--data-dir=/data/tikv"
+    volumes:
+      - tikv2-data:/data/tikv
+
+  oxigraph:
+    build:
+      context: ..
+      dockerfile: Containerfile
+    depends_on: [tikv-0, tikv-1, tikv-2]
+    ports:
+      - "7878:7878"
+    command:
+      - "--backend=tikv"
+      - "--pd-endpoints=pd:2379"
+      - "--bind=0.0.0.0:7878"
+      - "--shacl-mode=off"
+
+volumes:
+  pd-data:
+  tikv0-data:
+  tikv1-data:
+  tikv2-data:

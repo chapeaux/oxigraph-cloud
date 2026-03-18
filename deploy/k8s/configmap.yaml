@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oxigraph-cloud-config
+  namespace: oxigraph-cloud
+  labels:
+    app.kubernetes.io/name: oxigraph-cloud
+data:
+  # Storage backend: "rocksdb" or "tikv"
+  BACKEND: "rocksdb"
+  # TiKV PD endpoints (only used when BACKEND=tikv)
+  PD_ENDPOINTS: "tikv-pd:2379"
+  # SHACL validation mode: "off", "warn", or "enforce"
+  SHACL_MODE: "off"
+  # Bind address
+  BIND: "0.0.0.0:7878"
+  # Query timeout in seconds
+  QUERY_TIMEOUT: "30"
+  # CORS allowed origins (empty = disabled)
+  CORS_ORIGINS: ""

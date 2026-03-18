@@ -1,0 +1,235 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  HELM_CHART_DIR: deploy/helm/oxigraph-cloud
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build release binary (linux-amd64)
+  # ---------------------------------------------------------------------------
+  build-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.87"
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Build release binary
+        run: cargo build --release -p oxigraph-server
+
+      - name: Package binary artifact
+        run: |
+          mkdir -p dist
+          cp target/release/oxigraph-server dist/oxigraph-server-linux-amd64
+          chmod +x dist/oxigraph-server-linux-amd64
+          sha256sum dist/oxigraph-server-linux-amd64 > dist/oxigraph-server-linux-amd64.sha256
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: dist/
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # Build and push multi-arch container image
+  # ---------------------------------------------------------------------------
+  build-container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Containerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Package and push Helm chart as OCI artifact
+  # ---------------------------------------------------------------------------
+  helm-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Chart.yaml version to match release tag
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.VERSION }}/" ${{ env.HELM_CHART_DIR }}/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.VERSION }}\"/" ${{ env.HELM_CHART_DIR }}/Chart.yaml
+
+      - name: Lint Helm chart
+        run: helm lint ${{ env.HELM_CHART_DIR }}
+
+      - name: Package Helm chart
+        run: helm package ${{ env.HELM_CHART_DIR }} --destination dist/
+
+      - name: Log in to OCI registry for Helm
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
+
+      - name: Push Helm chart to OCI registry
+        run: helm push dist/oxigraph-cloud-${{ steps.version.outputs.VERSION }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts
+
+      - name: Upload Helm chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release
+  # ---------------------------------------------------------------------------
+  github-release:
+    needs: [build-binary, build-container, helm-package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: dist/
+
+      - name: Download Helm chart artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          # Get previous tag for changelog range
+          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "${{ github.ref_name }}" ]; then
+            # First release — include all commits
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges "${PREV_TAG}..HEAD")
+          fi
+          {
+            echo "CHANGELOG<<CHANGELOG_EOF"
+            echo "$COMMITS"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Oxigraph Cloud ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          body: |
+            ## Oxigraph Cloud ${{ steps.version.outputs.VERSION }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ### Container Image
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+            ```
+
+            ### Helm Chart
+            Install from OCI registry:
+            ```bash
+            helm install oxigraph-cloud \
+              oci://${{ env.REGISTRY }}/${{ github.repository }}/charts/oxigraph-cloud \
+              --version ${{ steps.version.outputs.VERSION }}
+            ```
+
+            Or with custom values:
+            ```bash
+            helm install oxigraph-cloud \
+              oci://${{ env.REGISTRY }}/${{ github.repository }}/charts/oxigraph-cloud \
+              --version ${{ steps.version.outputs.VERSION }} \
+              -f my-values.yaml
+            ```
+
+            ### Binary
+            Download the `oxigraph-server-linux-amd64` binary from the assets below.
+            Verify the checksum: `sha256sum -c oxigraph-server-linux-amd64.sha256`
+          files: |
+            dist/oxigraph-server-linux-amd64
+            dist/oxigraph-server-linux-amd64.sha256
+            dist/*.tgz

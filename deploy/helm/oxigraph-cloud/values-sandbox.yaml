@@ -1,0 +1,27 @@
+# Developer Sandbox overlay values
+# Minimal resources for Red Hat Developer Sandbox
+# Usage: helm install oxigraph-cloud ./deploy/helm/oxigraph-cloud -f values-sandbox.yaml
+
+replicaCount: 1
+
+backend:
+  type: rocksdb  # TiKV is too heavy for sandbox
+
+shacl:
+  mode: "warn"
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+server:
+  queryTimeout: 10
+  maxUploadSize: 10485760  # 10 MB

@@ -1,0 +1,52 @@
+@prefix ex: <http://example.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# People
+ex:alice a foaf:Person, ex:Employee ;
+    foaf:name "Alice Johnson"^^xsd:string ;
+    foaf:mbox <mailto:alice@example.org> ;
+    ex:age 30 ;
+    ex:worksFor ex:acme .
+
+ex:bob a foaf:Person, ex:Employee ;
+    foaf:name "Bob Smith"^^xsd:string ;
+    foaf:mbox <mailto:bob@example.org> ;
+    ex:age 25 ;
+    ex:worksFor ex:acme .
+
+ex:carol a foaf:Person, ex:Manager ;
+    foaf:name "Carol Williams"^^xsd:string ;
+    foaf:mbox <mailto:carol@example.org> ;
+    ex:age 45 ;
+    ex:worksFor ex:widgets ;
+    ex:manages ex:dave .
+
+ex:dave a foaf:Person, ex:Employee ;
+    foaf:name "Dave Brown"^^xsd:string ;
+    ex:age 35 ;
+    ex:worksFor ex:widgets .
+
+# Organizations
+ex:acme a schema:Organization ;
+    schema:name "ACME Corp"^^xsd:string ;
+    schema:foundingDate "2000-01-15"^^xsd:date ;
+    schema:numberOfEmployees 500 .
+
+ex:widgets a schema:Organization ;
+    schema:name "Widgets Inc"^^xsd:string ;
+    schema:foundingDate "2010-06-01"^^xsd:date ;
+    schema:numberOfEmployees 50 .
+
+# Projects
+ex:project-alpha a ex:Project ;
+    rdfs:label "Project Alpha" ;
+    ex:assignedTo ex:alice, ex:bob ;
+    ex:status "active" .
+
+ex:project-beta a ex:Project ;
+    rdfs:label "Project Beta" ;
+    ex:assignedTo ex:carol ;
+    ex:status "completed" .

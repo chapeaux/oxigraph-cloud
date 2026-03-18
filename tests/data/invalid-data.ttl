@@ -1,0 +1,22 @@
+@prefix ex: <http://example.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+# Invalid: Person without a name (violates sh:minCount 1 on foaf:name)
+ex:invalid-person-1 a foaf:Person ;
+    ex:age 25 .
+
+# Invalid: Person with non-string name (violates sh:datatype xsd:string)
+ex:invalid-person-2 a foaf:Person ;
+    foaf:name 42 ;
+    ex:age 30 .
+
+# Invalid: Person with negative age (violates sh:minInclusive 0)
+ex:invalid-person-3 a foaf:Person ;
+    foaf:name "Negative Ned"^^xsd:string ;
+    ex:age -5 .
+
+# Invalid: Employee not linked to any organization (violates sh:minCount 1)
+ex:invalid-employee a foaf:Person, ex:Employee ;
+    foaf:name "Orphan Employee"^^xsd:string ;
+    ex:age 22 .

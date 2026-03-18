@@ -1,0 +1,17 @@
+apiVersion: v2
+name: oxigraph-cloud
+description: Cloud-native Oxigraph SPARQL server with TiKV storage and SHACL validation
+type: application
+version: 0.5.6
+appVersion: "0.5.6"
+keywords:
+  - rdf
+  - sparql
+  - triplestore
+  - shacl
+  - tikv
+home: https://github.com/your-org/oxigraph-cloud
+sources:
+  - https://github.com/your-org/oxigraph-cloud
+maintainers:
+  - name: Oxigraph Cloud Team

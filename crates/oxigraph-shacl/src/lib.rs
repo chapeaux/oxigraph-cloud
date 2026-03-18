@@ -45,5 +45,6 @@
 //! ```
 
 pub mod error;
+pub mod report;
 pub mod shapes;
 pub mod validator;

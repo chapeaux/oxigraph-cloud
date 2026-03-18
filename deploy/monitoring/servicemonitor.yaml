@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: oxigraph-cloud
+  labels:
+    app.kubernetes.io/name: oxigraph-cloud
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oxigraph-cloud
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

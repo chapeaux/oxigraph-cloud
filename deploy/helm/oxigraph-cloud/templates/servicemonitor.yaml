@@ -1,0 +1,16 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "oxigraph-cloud.fullname" . }}
+  labels:
+    {{- include "oxigraph-cloud.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "oxigraph-cloud.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.interval }}
+{{- end }}

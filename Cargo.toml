@@ -24,6 +24,8 @@ members = [
     "crates/oxigraph-shacl",
     "crates/oxigraph-server",
     "crates/oxigraph-coprocessor",
+    # Benchmark crate
+    "tests/benchmark",
 ]
 resolver = "2"
 

@@ -27,6 +27,7 @@ WORKDIR /usr/src/app
 COPY Cargo.toml Cargo.lock ./
 COPY oxigraph/ oxigraph/
 COPY crates/ crates/
+COPY tests/ tests/
 
 # Build the server binary (without SHACL — rudof crates require nightly features on older toolchains)
 RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb && \
@@ -34,9 +35,9 @@ RUN cargo build --release -p oxigraph-server --no-default-features --features ro
     strip /usr/local/bin/oxigraph-cloud
 
 # ---------------------------------------------------------------------------
-# Stage 2: Runtime
+# Stage 2: Runtime — minimal attack surface
 # ---------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi9/ubi-micro:latest
 
 LABEL name="oxigraph-cloud" \
       summary="Cloud-native Oxigraph SPARQL server with SHACL validation" \
@@ -44,15 +45,15 @@ LABEL name="oxigraph-cloud" \
       io.k8s.display-name="Oxigraph Cloud" \
       io.openshift.tags="rdf,sparql,triplestore,shacl"
 
-# Install libstdc++ (needed by RocksDB) and create non-root user
-RUN microdnf install -y shadow-utils libstdc++ && \
-    useradd -r -u 1001 -g 0 -d /opt/oxigraph -s /sbin/nologin oxigraph && \
-    mkdir -p /opt/oxigraph/data && \
-    chown -R 1001:0 /opt/oxigraph && \
-    chmod -R g=u /opt/oxigraph && \
-    microdnf clean all
-
+# ubi-micro has no package manager, no shell, minimal attack surface.
+# It already provides libc, libm, libgcc_s, libpthread, libdl, librt.
+# We only need to add libstdc++ (for RocksDB C++ code) from the builder.
+COPY --from=builder /usr/lib64/libstdc++.so.6* /usr/lib64/
 COPY --from=builder /usr/local/bin/oxigraph-cloud /usr/local/bin/oxigraph-cloud
+
+# Create data directory (no shadow-utils needed — use numeric UID directly)
+RUN mkdir -p /opt/oxigraph/data && \
+    chmod -R 775 /opt/oxigraph
 
 EXPOSE 7878
 USER 1001

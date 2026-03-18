@@ -41,7 +41,7 @@ enum ShaclMode {
     /// No SHACL validation
     Off,
     /// Validate on writes, reject invalid data
-    Strict,
+    Enforce,
     /// Validate on writes, log warnings but accept data
     Warn,
 }
@@ -50,9 +50,9 @@ impl ShaclMode {
     fn from_str(s: &str) -> anyhow::Result<Self> {
         match s {
             "off" => Ok(Self::Off),
-            "strict" => Ok(Self::Strict),
+            "enforce" | "strict" => Ok(Self::Enforce),
             "warn" => Ok(Self::Warn),
-            other => anyhow::bail!("Unknown SHACL mode: {other}. Supported: off, strict, warn"),
+            other => anyhow::bail!("Unknown SHACL mode: {other}. Supported: off, enforce, warn"),
         }
     }
 }
@@ -77,7 +77,7 @@ struct Args {
     #[arg(long)]
     location: Option<String>,
 
-    /// SHACL validation mode: "off" (default), "strict", "warn"
+    /// SHACL validation mode: "off" (default), "enforce", "warn"
     #[arg(long, default_value = "off")]
     shacl_mode: String,
 
@@ -137,20 +137,13 @@ fn main() -> anyhow::Result<()> {
         "tikv" => {
             #[cfg(feature = "tikv")]
             {
-                let _pd_endpoints: Vec<String> = args
+                let pd_endpoints: Vec<String> = args
                     .pd_endpoints
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .collect();
-                // TiKV-backed Store not yet wired — the StorageBackend trait
-                // integration is tracked separately. For now, bail with a
-                // clear message.
-                anyhow::bail!(
-                    "TiKV backend is not yet fully implemented. \
-                     PD endpoints parsed: {:?}. \
-                     Use --backend=rocksdb for now.",
-                    _pd_endpoints
-                );
+                tracing::info!(backend = "tikv", pd_endpoints = ?pd_endpoints, "Connecting to TiKV cluster");
+                Store::open_tikv(&pd_endpoints)?
             }
             #[cfg(not(feature = "tikv"))]
             {
@@ -173,7 +166,7 @@ fn main() -> anyhow::Result<()> {
     let validator = {
         let lib_mode = match shacl_mode {
             ShaclMode::Off => ShacllibMode::Off,
-            ShaclMode::Strict => ShacllibMode::Enforce,
+            ShaclMode::Enforce => ShacllibMode::Enforce,
             ShaclMode::Warn => ShacllibMode::Warn,
         };
         Arc::new(Mutex::new(ShaclValidator::new(lib_mode)))
@@ -367,7 +360,47 @@ fn handle_request(
             handle_shacl_set_mode(request, &validator)
         }
 
-        // --- Everything else ---
+        // --- Everything else (with validation-on-ingest for write paths) ---
+        ("/update", "POST") => {
+            check_write_auth(request, write_key)?;
+            tracing::info!("SPARQL UPDATE (with SHACL validation)");
+            let ct = content_type(request)
+                .ok_or_else(|| bad_request("No Content-Type given"))?;
+            let update = if ct == "application/sparql-update" {
+                limited_string_body(request)?
+            } else if ct == "application/x-www-form-urlencoded" {
+                let body = limited_body(request)?;
+                form_urlencoded::parse(&body)
+                    .find(|(k, _)| k == "update")
+                    .map(|(_, v)| v.into_owned())
+                    .ok_or_else(|| bad_request("Missing 'update' parameter in form body"))?
+            } else {
+                return Err(unsupported_media_type(&ct));
+            };
+            let result = evaluate_sparql_update(&store, &update);
+            if result.is_ok() {
+                validate_after_write(&store, &validator)?;
+            }
+            result
+        }
+        ("/store", "POST") => {
+            check_write_auth(request, write_key)?;
+            tracing::info!("Store POST with SHACL validation");
+            let ct = content_type(request)
+                .ok_or_else(|| bad_request("No Content-Type given"))?;
+            let format = RdfFormat::from_media_type(&ct)
+                .ok_or_else(|| unsupported_media_type(&ct))?;
+            let parser = RdfParser::from_format(format);
+            let body = limited_body_with_max(request, max_upload_size)?;
+            store
+                .load_from_reader(parser, body.as_slice())
+                .map_err(|e| internal_server_error(e))?;
+            validate_after_write(&store, &validator)?;
+            Response::builder()
+                .status(StatusCode::NO_CONTENT)
+                .body(Body::empty())
+                .map_err(internal_server_error)
+        }
         _ => handle_request_core(request, store, query_timeout, max_upload_size, write_key),
     }
 }
@@ -530,6 +563,40 @@ fn handle_request_core(
 // SHACL endpoint handlers (feature-gated)
 // ---------------------------------------------------------------------------
 
+/// Validate store data after a write operation (SHACL validation-on-ingest).
+/// Returns HTTP 422 if validation fails in enforce mode.
+#[cfg(feature = "shacl")]
+fn validate_after_write(
+    store: &Store,
+    validator: &Arc<Mutex<ShaclValidator>>,
+) -> Result<(), HttpError> {
+    let v = validator.lock().map_err(|e| internal_server_error(e))?;
+    if v.shapes().is_none() || v.mode() == ShacllibMode::Off {
+        return Ok(());
+    }
+    match v.validate(store) {
+        Ok(oxigraph_shacl::validator::ValidationOutcome::Passed)
+        | Ok(oxigraph_shacl::validator::ValidationOutcome::Skipped) => Ok(()),
+        Ok(oxigraph_shacl::validator::ValidationOutcome::Failed(report)) => {
+            let report_json = oxigraph_shacl::report::report_to_json(&report);
+            if v.mode() == ShacllibMode::Warn {
+                tracing::warn!(report = %report_json, "SHACL validation warning");
+                Ok(())
+            } else {
+                tracing::warn!(report = %report_json, "SHACL validation failed — rejecting write");
+                Err((
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    report_json,
+                ))
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "SHACL validation error");
+            Err(internal_server_error(e))
+        }
+    }
+}
+
 #[cfg(feature = "shacl")]
 fn handle_shacl_upload_shapes(
     request: &mut Request<Body>,
@@ -598,10 +665,7 @@ fn handle_shacl_validate(
             "{\"conforms\": true, \"results_count\": 0}".to_string()
         }
         oxigraph_shacl::validator::ValidationOutcome::Failed(report) => {
-            format!(
-                "{{\"conforms\": false, \"report\": \"{}\"}}",
-                report.to_string().replace('\\', "\\\\").replace('"', "\\\"")
-            )
+            oxigraph_shacl::report::report_to_json(&report)
         }
     };
     Response::builder()

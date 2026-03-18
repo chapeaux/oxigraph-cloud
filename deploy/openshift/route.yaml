@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: oxigraph-cloud
+  labels:
+    app.kubernetes.io/name: oxigraph-cloud
+spec:
+  to:
+    kind: Service
+    name: oxigraph-cloud
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

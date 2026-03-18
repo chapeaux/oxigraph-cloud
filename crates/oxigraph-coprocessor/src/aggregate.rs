@@ -1,30 +1,80 @@
-//! Aggregation pushdown execution (COUNT, MIN, MAX).
-//!
-//! These functions run inside TiKV's Coprocessor plugin and return scalar
-//! aggregation results per Region, which the client merges:
-//!
-//! - **`COUNT_SCAN`**: Counts all keys matching the scan prefix within this Region.
-//!   The client sums partial counts from all Regions covering the prefix range.
-//!
-//! - **`MIN_MAX_SCAN`**: Returns the lexicographically smallest (MIN) or largest
-//!   (MAX) key within the scan prefix range in this Region. The client then takes
-//!   the global min/max across Region-level results.
-//!
-//! Since Oxigraph's term encoding preserves sort order for numeric and temporal
-//! types, lexicographic MIN/MAX on encoded keys corresponds to semantic MIN/MAX
-//! for those types.
+//! Aggregate pushdown: COUNT, MIN, MAX.
 
-// TODO: Implement when TiKV coprocessor_plugin_api dependency is available.
-// See docs/coprocessor-implementation-plan.md Section 2.6 for full implementation.
-//
-// pub fn execute_count_scan(
-//     req: &OxigraphCoprocessorRequest,
-//     ranges: &[Range],
-//     storage: &dyn RawStorage,
-// ) -> PluginResult<OxigraphCoprocessorResponse> { ... }
-//
-// pub fn execute_min_max_scan(
-//     req: &OxigraphCoprocessorRequest,
-//     ranges: &[Range],
-//     storage: &dyn RawStorage,
-// ) -> PluginResult<OxigraphCoprocessorResponse> { ... }
+#[derive(Debug, Clone)]
+pub struct CountResult { pub count: u64, pub scanned_keys: u64 }
+
+#[derive(Debug, Clone)]
+pub struct MinMaxResult {
+    pub min_key: Option<Vec<u8>>,
+    pub max_key: Option<Vec<u8>>,
+    pub scanned_keys: u64,
+}
+
+pub fn execute_count<'a>(
+    table_prefix: u8, key_prefix: &[u8],
+    pairs: impl Iterator<Item = (&'a [u8], &'a [u8])>,
+) -> CountResult {
+    let full_prefix = {
+        let mut p = vec![table_prefix];
+        p.extend_from_slice(key_prefix);
+        p
+    };
+    let mut result = CountResult { count: 0, scanned_keys: 0 };
+    for (key, _) in pairs {
+        if !key.starts_with(&full_prefix) { continue; }
+        result.scanned_keys += 1;
+        result.count += 1;
+    }
+    result
+}
+
+pub fn execute_min_max<'a>(
+    table_prefix: u8, key_prefix: &[u8],
+    pairs: impl Iterator<Item = (&'a [u8], &'a [u8])>,
+) -> MinMaxResult {
+    let full_prefix = {
+        let mut p = vec![table_prefix];
+        p.extend_from_slice(key_prefix);
+        p
+    };
+    let mut result = MinMaxResult { min_key: None, max_key: None, scanned_keys: 0 };
+    for (key, _) in pairs {
+        if !key.starts_with(&full_prefix) { continue; }
+        result.scanned_keys += 1;
+        if result.min_key.is_none() || key < result.min_key.as_deref().unwrap() {
+            result.min_key = Some(key.to_vec());
+        }
+        if result.max_key.is_none() || key > result.max_key.as_deref().unwrap() {
+            result.max_key = Some(key.to_vec());
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_count() {
+        let data: Vec<(Vec<u8>, Vec<u8>)> = vec![
+            (vec![0x02, 1, 2], b"a".to_vec()),
+            (vec![0x02, 1, 3], b"b".to_vec()),
+            (vec![0x03, 1, 1], b"d".to_vec()),
+        ];
+        let result = execute_count(0x02, &[1], data.iter().map(|(k, v)| (k.as_slice(), v.as_slice())));
+        assert_eq!(result.count, 2);
+    }
+
+    #[test]
+    fn test_min_max() {
+        let data: Vec<(Vec<u8>, Vec<u8>)> = vec![
+            (vec![0x02, 5], b"a".to_vec()),
+            (vec![0x02, 1], b"b".to_vec()),
+            (vec![0x02, 9], b"c".to_vec()),
+        ];
+        let result = execute_min_max(0x02, &[], data.iter().map(|(k, v)| (k.as_slice(), v.as_slice())));
+        assert_eq!(result.min_key, Some(vec![0x02, 1]));
+        assert_eq!(result.max_key, Some(vec![0x02, 9]));
+    }
+}

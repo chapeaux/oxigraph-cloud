@@ -1,0 +1,94 @@
+# Default values for oxigraph-cloud
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/your-org/oxigraph-cloud
+  pullPolicy: IfNotPresent
+  tag: ""  # Defaults to Chart appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Storage backend configuration
+backend:
+  # "rocksdb" or "tikv"
+  type: rocksdb
+  tikv:
+    pdEndpoints: "tikv-pd:2379"
+
+# SHACL validation
+shacl:
+  # "off", "warn", or "enforce"
+  mode: "off"
+
+# Server configuration
+server:
+  bind: "0.0.0.0:7878"
+  queryTimeout: 30
+  maxUploadSize: 134217728  # 128 MB
+  corsOrigins: ""
+
+# Write authentication
+auth:
+  # Set to a secret key string, or use existingSecret
+  writeKey: ""
+  existingSecret: ""
+  existingSecretKey: "write-key"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 7878
+
+# Persistent storage (for RocksDB backend)
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 0
+
+# Kubernetes probes
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    path: /ready
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# OpenShift Route (set to true on OpenShift)
+route:
+  enabled: false
+  host: ""
+  tls:
+    termination: edge
+
+# Prometheus monitoring
+monitoring:
+  enabled: false
+  interval: 30s
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

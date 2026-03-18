@@ -1,0 +1,82 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "SPARQL Query Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(oxigraph_sparql_queries_total[5m])",
+          "legendFormat": "{{ instance }}"
+        }
+      ]
+    },
+    {
+      "title": "Query Latency (P99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(oxigraph_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Active Transactions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "oxigraph_active_transactions",
+          "legendFormat": "transactions"
+        }
+      ]
+    },
+    {
+      "title": "SHACL Validation Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "rate(oxigraph_shacl_validations_total[5m])",
+          "legendFormat": "{{ result }}"
+        }
+      ]
+    },
+    {
+      "title": "Store Size (triples)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        {
+          "expr": "oxigraph_store_triple_count",
+          "legendFormat": "triples"
+        }
+      ]
+    },
+    {
+      "title": "HTTP Request Rate by Endpoint",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "rate(oxigraph_http_requests_total[5m])",
+          "legendFormat": "{{ method }} {{ path }}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["oxigraph", "sparql", "rdf"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Oxigraph Cloud",
+  "uid": "oxigraph-cloud"
+}

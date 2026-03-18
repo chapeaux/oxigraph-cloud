@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oxigraph-cloud-data
+  namespace: oxigraph-cloud
+  labels:
+    app.kubernetes.io/name: oxigraph-cloud
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

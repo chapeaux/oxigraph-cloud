@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oxigraph-cloud
+  namespace: oxigraph-cloud
+  labels:
+    app.kubernetes.io/name: oxigraph-cloud
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oxigraph-cloud
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oxigraph-cloud
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: oxigraph-cloud
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 0
+      containers:
+        - name: oxigraph-cloud
+          image: ghcr.io/your-org/oxigraph-cloud:latest
+          ports:
+            - name: http
+              containerPort: 7878
+              protocol: TCP
+          env:
+            - name: OXIGRAPH_WRITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: oxigraph-cloud-secrets
+                  key: write-key
+                  optional: true
+          args:
+            - "--backend"
+            - "$(BACKEND)"
+            - "--pd-endpoints"
+            - "$(PD_ENDPOINTS)"
+            - "--bind"
+            - "$(BIND)"
+            - "--shacl-mode"
+            - "$(SHACL_MODE)"
+            - "--query-timeout"
+            - "$(QUERY_TIMEOUT)"
+            - "--location"
+            - "/opt/oxigraph/data"
+          envFrom:
+            - configMapRef:
+                name: oxigraph-cloud-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /opt/oxigraph/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: oxigraph-cloud-data
