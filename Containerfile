@@ -28,8 +28,8 @@ COPY Cargo.toml Cargo.lock ./
 COPY oxigraph/ oxigraph/
 COPY crates/ crates/
 
-# Build the server binary
-RUN cargo build --release -p oxigraph-server && \
+# Build the server binary (without SHACL — rudof crates require nightly features on older toolchains)
+RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb && \
     cp target/release/oxigraph-cloud /usr/local/bin/oxigraph-cloud && \
     strip /usr/local/bin/oxigraph-cloud
 
