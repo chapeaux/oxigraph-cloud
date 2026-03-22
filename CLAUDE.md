@@ -27,6 +27,10 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 - **SHACL mode flag**: `--shacl-mode off|warn|enforce` (server accepts `strict` as alias for `enforce`)
 - **SHACL mode API**: `PUT /shacl/mode` expects JSON body `{"mode": "enforce"}`
 - **Write auth**: `--write-key` or `OXIGRAPH_WRITE_KEY` env var, `Authorization: Bearer <key>` header
+- **Transactions**: `POST /transactions` to begin, `PUT .../commit` to commit, `DELETE` to rollback
+- **Changelog**: `GET /changelog`, `POST /changelog/{id}/undo` — opt-in via `--changelog`
+- **OpenTelemetry**: `--features otel` enables Prometheus `/metrics` endpoint and OTLP trace export (`--otel`, `--otel-endpoint`)
+- **Telemetry module**: `crates/oxigraph-server/src/telemetry.rs` — metrics, tracing init, `/metrics` handler
 - **Container images**: `quay.io/ldary/oxigraph-cloud:0.6.0` (RocksDB + SHACL), `:0.6.0-tikv` (RocksDB + TiKV + SHACL)
 - **Base image**: `ubi9/ubi-micro` (near-zero CVEs), stable Rust toolchain
 

@@ -16,6 +16,9 @@ Oxigraph Cloud-Native extends the [Oxigraph](https://github.com/oxigraph/oxigrap
 - **Write authentication** -- API key protection for write operations via `--write-key` or `OXIGRAPH_WRITE_KEY`
 - **TiKV Coprocessor pushdown** -- scan, filter, aggregate, and bloom filter semi-join operations pushed to Region-local execution
 - **Cloud-native deployment** -- Helm chart with OpenShift Route support, health/readiness probes, network policies
+- **HTTP transaction API** -- begin/commit/rollback transactions over HTTP with buffered multi-step writes
+- **Changelog with undo** -- opt-in changelog recording of write operations, with `POST /changelog/{id}/undo` to revert
+- **OpenTelemetry observability** -- Prometheus `/metrics` endpoint and OTLP distributed trace export (feature-gated via `--features otel`)
 - **Structured JSON logging** -- machine-parseable log output via `tracing-subscriber`
 - **Configurable query timeouts** -- per-query execution time limits via `--query-timeout`
 - **Configurable upload size limits** -- control maximum request body size via `--max-upload-size`
@@ -222,6 +225,37 @@ When validation mode is `strict`/`enforce`, inserting data that violates shapes 
 
 For the full API specification, see [docs/shacl-api-spec.md](docs/shacl-api-spec.md).
 
+## OpenTelemetry Observability
+
+OpenTelemetry support is available behind the `otel` cargo feature:
+
+```bash
+cargo build --release -p oxigraph-server --features otel
+```
+
+### Enable metrics
+
+```bash
+./target/release/oxigraph-cloud --otel --location /tmp/oxigraph-data
+```
+
+Prometheus metrics are exposed at `GET /metrics`:
+
+```bash
+curl http://127.0.0.1:7878/metrics
+```
+
+Available metrics: `oxigraph_http_requests_total`, `oxigraph_sparql_queries_total`, `oxigraph_query_duration_seconds`, `oxigraph_active_transactions`, `oxigraph_shacl_validations_total`, `oxigraph_store_triple_count`.
+
+### Enable distributed tracing
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+  ./target/release/oxigraph-cloud --otel --location /tmp/oxigraph-data
+```
+
+Traces are exported via OTLP gRPC to the configured endpoint (e.g., Jaeger, OpenTelemetry Collector).
+
 ## CLI Reference
 
 | Flag | Default | Description |
@@ -235,6 +269,12 @@ For the full API specification, see [docs/shacl-api-spec.md](docs/shacl-api-spec
 | `--cors-origins` | (empty) | CORS allowed origins: `*` for wildcard, or comma-separated list |
 | `--query-timeout` | `30` | Query execution timeout in seconds |
 | `--max-upload-size` | `134217728` | Maximum upload body size in bytes (default 128 MB) |
+| `--changelog` | `false` | Enable changelog recording for write operations |
+| `--changelog-retain` | `100` | Maximum changelog entries to retain (0 = unlimited) |
+| `--transaction-timeout` | `60` | Transaction idle timeout in seconds |
+| `--otel` | `false` | Enable Prometheus `/metrics` endpoint (requires `otel` feature) |
+| `--otel-endpoint` | (none) | OTLP endpoint for trace export (env: `OTEL_EXPORTER_OTLP_ENDPOINT`) |
+| `--otel-service-name` | `oxigraph-cloud` | OpenTelemetry service name (env: `OTEL_SERVICE_NAME`) |
 
 ## Architecture
 
