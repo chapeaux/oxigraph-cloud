@@ -107,7 +107,11 @@ Run the container:
 podman run -p 7878:7878 oxigraph-cloud
 ```
 
-The Containerfile uses a multi-stage build with Red Hat UBI 9 as the base image. The runtime image includes only the compiled binary and required shared libraries.
+The Containerfile uses a multi-stage build with Red Hat UBI 9 as the base image. The runtime image includes the compiled binary with SHACL validation support and required shared libraries. A TiKV-enabled variant is also available:
+
+```bash
+podman build -t oxigraph-cloud:tikv -f Containerfile.tikv .
+```
 
 To persist data across container restarts:
 
