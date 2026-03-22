@@ -16,7 +16,7 @@ FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
 
 # Install Rust toolchain and build deps
 RUN dnf install -y --allowerasing gcc gcc-c++ make cmake clang llvm-devel curl git && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && \
     dnf clean all
 
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -29,8 +29,8 @@ COPY oxigraph/ oxigraph/
 COPY crates/ crates/
 COPY tests/ tests/
 
-# Build the server binary (without SHACL — rudof crates require nightly features on older toolchains)
-RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb && \
+# Build the server binary with SHACL validation support
+RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb,shacl && \
     cp target/release/oxigraph-cloud /usr/local/bin/oxigraph-cloud && \
     strip /usr/local/bin/oxigraph-cloud
 

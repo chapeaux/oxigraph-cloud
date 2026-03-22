@@ -14,7 +14,7 @@ FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
 
 RUN dnf install -y --allowerasing gcc gcc-c++ make cmake clang llvm-devel curl git \
         openssl-devel perl-FindBin perl-File-Compare && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.87.0 && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && \
     dnf clean all
 
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -25,8 +25,8 @@ COPY oxigraph/ oxigraph/
 COPY crates/ crates/
 COPY tests/ tests/
 
-# Build with both RocksDB and TiKV features (no SHACL for UBI 9 compat)
-RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb,tikv && \
+# Build with RocksDB, TiKV, and SHACL features
+RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb,tikv,shacl && \
     cp target/release/oxigraph-cloud /usr/local/bin/oxigraph-cloud && \
     strip /usr/local/bin/oxigraph-cloud
 
