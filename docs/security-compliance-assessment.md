@@ -2,7 +2,7 @@
 
 > **Date**: 2026-03-17 | **Assessor**: Security & Compliance Agent
 > **Scope**: Full-stack assessment covering dependencies, container, deployment, data security, SPARQL endpoint, and operational security.
-> **Project Version**: 0.5.6 | **Rust Toolchain**: 1.87.0
+> **Project Version**: 0.6.0 | **Rust Toolchain**: stable
 
 ---
 
