@@ -45,6 +45,9 @@ spec:
             - {{ .Values.shacl.mode | quote }}
             - "--query-timeout"
             - {{ .Values.server.queryTimeout | quote }}
+            {{- if .Values.monitoring.otel.enabled }}
+            - "--otel"
+            {{- end }}
           env:
             {{- if .Values.auth.writeKey }}
             - name: OXIGRAPH_WRITE_KEY
@@ -55,6 +58,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.existingSecret }}
                   key: {{ .Values.auth.existingSecretKey }}
+            {{- end }}
+            {{- if .Values.monitoring.otel.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.monitoring.otel.endpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.monitoring.otel.serviceName | quote }}
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

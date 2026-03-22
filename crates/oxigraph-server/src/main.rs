@@ -1,4 +1,6 @@
 mod changelog;
+#[cfg(feature = "otel")]
+mod telemetry;
 mod transactions;
 
 use changelog::{Changelog, ChangelogError, entry_to_detail_json, entry_to_list_json};
@@ -116,13 +118,35 @@ struct Args {
     /// Transactions inactive longer than this are automatically rolled back.
     #[arg(long, default_value_t = 60)]
     transaction_timeout: u64,
+
+    /// Enable OpenTelemetry metrics (/metrics endpoint) and optional OTLP tracing.
+    #[arg(long, default_value_t = false)]
+    otel: bool,
+
+    /// OTLP endpoint for distributed trace export (e.g., http://localhost:4317).
+    /// Only used when --otel is enabled. Also configurable via OTEL_EXPORTER_OTLP_ENDPOINT.
+    #[arg(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
+    otel_endpoint: Option<String>,
+
+    /// Service name for OpenTelemetry resource.
+    #[arg(long, default_value = "oxigraph-cloud", env = "OTEL_SERVICE_NAME")]
+    otel_service_name: String,
 }
 
 fn main() -> anyhow::Result<()> {
-    // SEC-06: Initialize structured JSON logging
-    tracing_subscriber::fmt().json().init();
-
     let args = Args::parse();
+
+    // Initialize tracing (with or without OTel)
+    #[cfg(feature = "otel")]
+    let _otel_guard = if args.otel && args.otel_endpoint.is_some() {
+        Some(telemetry::init_tracing_with_otel(&args.otel_service_name)?)
+    } else {
+        telemetry::init_tracing_basic();
+        None
+    };
+
+    #[cfg(not(feature = "otel"))]
+    tracing_subscriber::fmt().json().init();
     let shacl_mode = ShaclMode::from_str(&args.shacl_mode)?;
     let query_timeout = Duration::from_secs(args.query_timeout);
     let max_upload_size = args.max_upload_size;
@@ -180,6 +204,16 @@ fn main() -> anyhow::Result<()> {
 
     if shacl_mode != ShaclMode::Off {
         tracing::info!(shacl_mode = ?shacl_mode, "SHACL validation mode enabled (hooks not yet wired)");
+    }
+
+    // Metrics (feature-gated, stored globally via OnceLock)
+    #[cfg(feature = "otel")]
+    if args.otel {
+        let m = telemetry::Metrics::new()?;
+        if telemetry::METRICS.set(m).is_err() {
+            anyhow::bail!("Metrics already initialized");
+        }
+        tracing::info!("Prometheus metrics enabled at /metrics");
     }
 
     // Transaction registry and changelog
@@ -262,17 +296,9 @@ fn serve(
         let reg = Arc::clone(registry);
         let cl = Arc::clone(changelog);
         Server::new(move |request| {
-            handle_request(
-                request,
-                store.clone(),
-                &v,
-                query_timeout,
-                max_upload_size,
-                &wk,
-                &reg,
-                &cl,
-            )
-            .unwrap_or_else(|(status, message)| error(status, message))
+            handle_with_metrics(request, |r| {
+                handle_request(r, store.clone(), &v, query_timeout, max_upload_size, &wk, &reg, &cl)
+            })
         })
     } else {
         let v = Arc::clone(validator);
@@ -282,17 +308,9 @@ fn serve(
         let origins = cors_origins.to_owned();
         Server::new(cors_middleware(
             move |request| {
-                handle_request(
-                    request,
-                    store.clone(),
-                    &v,
-                    query_timeout,
-                    max_upload_size,
-                    &wk,
-                    &reg,
-                    &cl,
-                )
-                .unwrap_or_else(|(status, message)| error(status, message))
+                handle_with_metrics(request, |r| {
+                    handle_request(r, store.clone(), &v, query_timeout, max_upload_size, &wk, &reg, &cl)
+                })
             },
             origins,
         ))
@@ -327,8 +345,9 @@ fn serve(
         let reg = Arc::clone(registry);
         let cl = Arc::clone(changelog);
         Server::new(move |request| {
-            handle_request(request, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
-                .unwrap_or_else(|(status, message)| error(status, message))
+            handle_with_metrics(request, |r| {
+                handle_request(r, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
+            })
         })
     } else {
         let wk = Arc::clone(&write_key);
@@ -337,8 +356,9 @@ fn serve(
         let origins = cors_origins.to_owned();
         Server::new(cors_middleware(
             move |request| {
-                handle_request(request, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
-                    .unwrap_or_else(|(status, message)| error(status, message))
+                handle_with_metrics(request, |r| {
+                    handle_request(r, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
+                })
             },
             origins,
         ))
@@ -580,6 +600,17 @@ fn handle_request_core(
                 .header(CONTENT_TYPE, "text/plain")
                 .body("READY".into())
                 .map_err(internal_server_error)
+        }
+
+        // --- Prometheus metrics endpoint ---
+        #[cfg(feature = "otel")]
+        ("/metrics", "GET") => {
+            if let Some(m) = telemetry::metrics() {
+                m.update_store_size(&store);
+                telemetry::handle_metrics(m)
+            } else {
+                Err((StatusCode::NOT_FOUND, "Metrics not enabled (use --otel)".to_owned()))
+            }
         }
 
         // --- Root page (always open) ---
@@ -931,6 +962,42 @@ fn handle_changelog_routes(
     }
 }
 
+/// Wrapper that handles a request and records HTTP metrics (when otel is enabled).
+fn handle_with_metrics(
+    request: &mut Request<Body>,
+    handler: impl FnOnce(&mut Request<Body>) -> Result<Response<Body>, HttpError>,
+) -> Response<Body> {
+    #[cfg(feature = "otel")]
+    let method = request.method().as_ref().to_owned();
+    #[cfg(feature = "otel")]
+    let path = request.uri().path().to_owned();
+
+    let response = handler(request).unwrap_or_else(|(status, message)| error(status, message));
+
+    #[cfg(feature = "otel")]
+    record_http_metrics(&method, &path, response.status().as_u16());
+
+    response
+}
+
+/// Record HTTP request metrics after handling.
+#[cfg(feature = "otel")]
+fn record_http_metrics(method: &str, path: &str, status: u16) {
+    if let Some(m) = telemetry::metrics() {
+        // Normalize path to avoid high cardinality (strip IDs)
+        let norm_path = if path.starts_with("/transactions/") {
+            "/transactions/{id}"
+        } else if path.starts_with("/changelog/") {
+            "/changelog/{id}"
+        } else {
+            path
+        };
+        m.http_requests_total
+            .with_label_values(&[method, norm_path, &status.to_string()])
+            .inc();
+    }
+}
+
 fn txn_error_to_http(e: TransactionError) -> HttpError {
     match e {
         TransactionError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
@@ -1144,11 +1211,30 @@ fn evaluate_sparql_query(
 ) -> Result<Response<Body>, HttpError> {
     let start = Instant::now();
     let evaluator = SparqlEvaluator::new();
-    let prepared = evaluator.parse_query(query).map_err(bad_request)?;
+    let prepared = evaluator.parse_query(query).map_err(|e| {
+        #[cfg(feature = "otel")]
+        if let Some(m) = telemetry::metrics() {
+            m.sparql_queries_total.with_label_values(&["error"]).inc();
+        }
+        bad_request(e)
+    })?;
     let results = prepared
         .on_store(store)
         .execute()
-        .map_err(internal_server_error)?;
+        .map_err(|e| {
+            #[cfg(feature = "otel")]
+            if let Some(m) = telemetry::metrics() {
+                m.sparql_queries_total.with_label_values(&["error"]).inc();
+                m.query_duration_seconds.observe(start.elapsed().as_secs_f64());
+            }
+            internal_server_error(e)
+        })?;
+
+    #[cfg(feature = "otel")]
+    if let Some(m) = telemetry::metrics() {
+        m.sparql_queries_total.with_label_values(&["ok"]).inc();
+        m.query_duration_seconds.observe(start.elapsed().as_secs_f64());
+    }
 
     // SEC-05/SEC-08: Check if query parsing already exceeded timeout
     if start.elapsed() > query_timeout {

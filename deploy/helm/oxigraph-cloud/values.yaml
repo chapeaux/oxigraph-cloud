@@ -84,10 +84,14 @@ route:
   tls:
     termination: edge
 
-# Prometheus monitoring
+# Prometheus monitoring and OpenTelemetry
 monitoring:
   enabled: false
   interval: 30s
+  otel:
+    enabled: false
+    endpoint: ""
+    serviceName: "oxigraph-cloud"
 
 nodeSelector: {}
 tolerations: []

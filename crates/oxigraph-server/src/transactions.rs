@@ -54,6 +54,10 @@ impl TransactionRegistry {
                 last_active: Instant::now(),
             },
         );
+        #[cfg(feature = "otel")]
+        if let Some(m) = crate::telemetry::metrics() {
+            m.active_transactions.inc();
+        }
         tracing::info!(txn_id = %id, "Transaction started");
         id
     }
@@ -161,6 +165,10 @@ impl TransactionRegistry {
             .commit()
             .map_err(|e| TransactionError::Storage(e.to_string()))?;
 
+        #[cfg(feature = "otel")]
+        if let Some(m) = crate::telemetry::metrics() {
+            m.active_transactions.dec();
+        }
         tracing::info!(txn_id = %txn_id, "Transaction committed");
 
         Ok(CommitResult {
@@ -174,6 +182,10 @@ impl TransactionRegistry {
         self.txns
             .remove(txn_id)
             .ok_or(TransactionError::NotFound)?;
+        #[cfg(feature = "otel")]
+        if let Some(m) = crate::telemetry::metrics() {
+            m.active_transactions.dec();
+        }
         tracing::info!(txn_id = %txn_id, "Transaction rolled back");
         Ok(())
     }
@@ -190,6 +202,10 @@ impl TransactionRegistry {
         let count = expired.len();
         for id in &expired {
             self.txns.remove(id);
+            #[cfg(feature = "otel")]
+            if let Some(m) = crate::telemetry::metrics() {
+                m.active_transactions.dec();
+            }
             tracing::info!(txn_id = %id, "Expired transaction cleaned up");
         }
         count

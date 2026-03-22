@@ -118,6 +118,12 @@ rudof_rdf = "0.2.7"
 shacl_ir = "0.2.7"
 shacl_rdf = "0.2.6"
 sparql_service = "0.2.6"
+opentelemetry = "0.31"
+opentelemetry_sdk = "0.31"
+opentelemetry-otlp = "0.31"
+opentelemetry-appender-tracing = "0.31"
+tracing-opentelemetry = "0.32"
+prometheus = "0.13"
 
 [workspace.lints.rust]
 absolute_paths_not_starting_with_crate = "warn"
