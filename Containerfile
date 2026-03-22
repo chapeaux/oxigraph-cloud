@@ -29,8 +29,16 @@ COPY oxigraph/ oxigraph/
 COPY crates/ crates/
 COPY tests/ tests/
 
+# Extra features (e.g., "otel" for OpenTelemetry support)
+ARG EXTRA_FEATURES=""
+
 # Build the server binary with SHACL validation support
-RUN cargo build --release -p oxigraph-server --no-default-features --features rocksdb,shacl && \
+RUN if [ -n "$EXTRA_FEATURES" ]; then \
+      FEATURES="rocksdb,shacl,$EXTRA_FEATURES"; \
+    else \
+      FEATURES="rocksdb,shacl"; \
+    fi && \
+    cargo build --release -p oxigraph-server --no-default-features --features "$FEATURES" && \
     cp target/release/oxigraph-cloud /usr/local/bin/oxigraph-cloud && \
     strip /usr/local/bin/oxigraph-cloud
 
