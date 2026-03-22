@@ -18,7 +18,10 @@ pub fn metrics() -> Option<&'static Metrics> {
 ///
 /// Uses the `prometheus` crate directly for `/metrics` endpoint.
 /// OpenTelemetry is used separately for distributed tracing (OTLP export).
-#[expect(dead_code, reason = "shacl_validations_total will be wired into SHACL validation handlers")]
+#[expect(
+    dead_code,
+    reason = "shacl_validations_total will be wired into SHACL validation handlers"
+)]
 pub struct Metrics {
     pub http_requests_total: IntCounterVec,
     pub sparql_queries_total: IntCounterVec,
@@ -74,8 +77,10 @@ impl Metrics {
         )?;
         registry.register(Box::new(shacl_validations_total.clone()))?;
 
-        let store_triple_count =
-            IntGauge::new("oxigraph_store_triple_count", "Number of quads in the store")?;
+        let store_triple_count = IntGauge::new(
+            "oxigraph_store_triple_count",
+            "Number of quads in the store",
+        )?;
         registry.register(Box::new(store_triple_count.clone()))?;
 
         Ok(Self {
@@ -92,7 +97,8 @@ impl Metrics {
     /// Update the store triple count gauge.
     pub fn update_store_size(&self, store: &oxigraph::store::Store) {
         if let Ok(count) = store.len() {
-            self.store_triple_count.set(i64::try_from(count).unwrap_or(i64::MAX));
+            self.store_triple_count
+                .set(i64::try_from(count).unwrap_or(i64::MAX));
         }
     }
 }
@@ -126,8 +132,8 @@ pub fn init_tracing_with_otel(service_name: &str) -> anyhow::Result<OtelGuard> {
 
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     let fmt_layer = tracing_subscriber::fmt::layer().json();
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info".into());
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
 
     tracing_subscriber::registry()
         .with(env_filter)
@@ -147,8 +153,8 @@ pub fn init_tracing_basic() {
     use tracing_subscriber::util::SubscriberInitExt;
 
     let fmt_layer = tracing_subscriber::fmt::layer().json();
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info".into());
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
 
     tracing_subscriber::registry()
         .with(env_filter)

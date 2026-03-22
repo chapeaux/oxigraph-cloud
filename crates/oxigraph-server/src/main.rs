@@ -297,7 +297,16 @@ fn serve(
         let cl = Arc::clone(changelog);
         Server::new(move |request| {
             handle_with_metrics(request, |r| {
-                handle_request(r, store.clone(), &v, query_timeout, max_upload_size, &wk, &reg, &cl)
+                handle_request(
+                    r,
+                    store.clone(),
+                    &v,
+                    query_timeout,
+                    max_upload_size,
+                    &wk,
+                    &reg,
+                    &cl,
+                )
             })
         })
     } else {
@@ -309,7 +318,16 @@ fn serve(
         Server::new(cors_middleware(
             move |request| {
                 handle_with_metrics(request, |r| {
-                    handle_request(r, store.clone(), &v, query_timeout, max_upload_size, &wk, &reg, &cl)
+                    handle_request(
+                        r,
+                        store.clone(),
+                        &v,
+                        query_timeout,
+                        max_upload_size,
+                        &wk,
+                        &reg,
+                        &cl,
+                    )
                 })
             },
             origins,
@@ -346,7 +364,15 @@ fn serve(
         let cl = Arc::clone(changelog);
         Server::new(move |request| {
             handle_with_metrics(request, |r| {
-                handle_request(r, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
+                handle_request(
+                    r,
+                    store.clone(),
+                    query_timeout,
+                    max_upload_size,
+                    &wk,
+                    &reg,
+                    &cl,
+                )
             })
         })
     } else {
@@ -357,7 +383,15 @@ fn serve(
         Server::new(cors_middleware(
             move |request| {
                 handle_with_metrics(request, |r| {
-                    handle_request(r, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
+                    handle_request(
+                        r,
+                        store.clone(),
+                        query_timeout,
+                        max_upload_size,
+                        &wk,
+                        &reg,
+                        &cl,
+                    )
                 })
             },
             origins,
@@ -570,13 +604,7 @@ fn handle_request_core(
     // Check for transaction endpoints: /transactions or /transactions/{id}/...
     if let Some(rest) = path.strip_prefix("/transactions") {
         return handle_transaction_routes(
-            request,
-            &store,
-            write_key,
-            registry,
-            changelog,
-            rest,
-            &method,
+            request, &store, write_key, registry, changelog, rest, &method,
         );
     }
 
@@ -609,7 +637,10 @@ fn handle_request_core(
                 m.update_store_size(&store);
                 telemetry::handle_metrics(m)
             } else {
-                Err((StatusCode::NOT_FOUND, "Metrics not enabled (use --otel)".to_owned()))
+                Err((
+                    StatusCode::NOT_FOUND,
+                    "Metrics not enabled (use --otel)".to_owned(),
+                ))
             }
         }
 
@@ -816,9 +847,7 @@ fn handle_transaction_routes(
         ("update", "POST") => {
             check_write_auth(request, write_key)?;
             let sparql = limited_string_body(request)?;
-            registry
-                .update(txn_id, sparql)
-                .map_err(txn_error_to_http)?;
+            registry.update(txn_id, sparql).map_err(txn_error_to_http)?;
             Response::builder()
                 .status(StatusCode::NO_CONTENT)
                 .body(Body::empty())
@@ -828,9 +857,7 @@ fn handle_transaction_routes(
         // PUT /transactions/{id}/commit
         ("commit", "PUT") => {
             check_write_auth(request, write_key)?;
-            let result = registry
-                .commit(txn_id, store)
-                .map_err(txn_error_to_http)?;
+            let result = registry.commit(txn_id, store).map_err(txn_error_to_http)?;
 
             // Record in changelog if enabled
             if changelog.is_enabled() {
@@ -904,9 +931,7 @@ fn handle_changelog_routes(
     // DELETE /changelog — purge all
     if rest.is_empty() && method == "DELETE" {
         check_write_auth(request, write_key)?;
-        let count = changelog
-            .purge(store)
-            .map_err(changelog_error_to_http)?;
+        let count = changelog.purge(store).map_err(changelog_error_to_http)?;
         return Response::builder()
             .status(StatusCode::OK)
             .header(CONTENT_TYPE, "application/json")
@@ -931,7 +956,12 @@ fn handle_changelog_routes(
             let entry = changelog
                 .get(store, id)
                 .map_err(changelog_error_to_http)?
-                .ok_or_else(|| (StatusCode::NOT_FOUND, "Changelog entry not found".to_owned()))?;
+                .ok_or_else(|| {
+                    (
+                        StatusCode::NOT_FOUND,
+                        "Changelog entry not found".to_owned(),
+                    )
+                })?;
             let body = entry_to_detail_json(&entry);
             Response::builder()
                 .status(StatusCode::OK)
@@ -943,9 +973,7 @@ fn handle_changelog_routes(
         // POST /changelog/{id}/undo
         ("undo", "POST") => {
             check_write_auth(request, write_key)?;
-            let undo_entry = changelog
-                .undo(store, id)
-                .map_err(changelog_error_to_http)?;
+            let undo_entry = changelog.undo(store, id).map_err(changelog_error_to_http)?;
             let body = entry_to_detail_json(&undo_entry);
             Response::builder()
                 .status(StatusCode::OK)
@@ -1218,22 +1246,21 @@ fn evaluate_sparql_query(
         }
         bad_request(e)
     })?;
-    let results = prepared
-        .on_store(store)
-        .execute()
-        .map_err(|e| {
-            #[cfg(feature = "otel")]
-            if let Some(m) = telemetry::metrics() {
-                m.sparql_queries_total.with_label_values(&["error"]).inc();
-                m.query_duration_seconds.observe(start.elapsed().as_secs_f64());
-            }
-            internal_server_error(e)
-        })?;
+    let results = prepared.on_store(store).execute().map_err(|e| {
+        #[cfg(feature = "otel")]
+        if let Some(m) = telemetry::metrics() {
+            m.sparql_queries_total.with_label_values(&["error"]).inc();
+            m.query_duration_seconds
+                .observe(start.elapsed().as_secs_f64());
+        }
+        internal_server_error(e)
+    })?;
 
     #[cfg(feature = "otel")]
     if let Some(m) = telemetry::metrics() {
         m.sparql_queries_total.with_label_values(&["ok"]).inc();
-        m.query_duration_seconds.observe(start.elapsed().as_secs_f64());
+        m.query_duration_seconds
+            .observe(start.elapsed().as_secs_f64());
     }
 
     // SEC-05/SEC-08: Check if query parsing already exceeded timeout

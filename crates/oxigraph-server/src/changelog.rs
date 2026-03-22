@@ -2,8 +2,8 @@ use crate::transactions::BufferedOp;
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
 use oxigraph::model::*;
 use oxigraph::store::Store;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CHANGELOG_GRAPH: &str = "urn:oxigraph:changelog";
@@ -52,7 +52,12 @@ impl Changelog {
         let pred_id = NamedNode::new_unchecked("urn:oxigraph:txnId");
         let mut max_id: u64 = 0;
         for quad in store
-            .quads_for_pattern(None, Some(pred_id.as_ref()), None, Some(graph.as_ref().into()))
+            .quads_for_pattern(
+                None,
+                Some(pred_id.as_ref()),
+                None,
+                Some(graph.as_ref().into()),
+            )
             .flatten()
         {
             if let Term::Literal(lit) = &quad.object {
@@ -151,11 +156,15 @@ impl Changelog {
 
         let mut entries: Vec<(u64, NamedNode)> = Vec::new();
         for quad in store
-            .quads_for_pattern(None, Some(pred_id.as_ref()), None, Some(graph.as_ref().into()))
+            .quads_for_pattern(
+                None,
+                Some(pred_id.as_ref()),
+                None,
+                Some(graph.as_ref().into()),
+            )
             .flatten()
         {
-            if let (Term::NamedNode(subj), Term::Literal(lit)) =
-                (quad.subject.into(), &quad.object)
+            if let (Term::NamedNode(subj), Term::Literal(lit)) = (quad.subject.into(), &quad.object)
             {
                 if let Ok(id) = lit.value().parse::<u64>() {
                     entries.push((id, subj));
@@ -295,7 +304,11 @@ impl Changelog {
         ];
         let undo_entry = self.record(store, &inverse_ops, &format!("undo:{id}"))?;
 
-        tracing::info!(original_id = id, undo_id = undo_entry.id, "Transaction undone");
+        tracing::info!(
+            original_id = id,
+            undo_id = undo_entry.id,
+            "Transaction undone"
+        );
         Ok(undo_entry)
     }
 
@@ -336,7 +349,12 @@ impl Changelog {
 
         let mut to_delete_subjects: Vec<NamedNode> = Vec::new();
         for quad in store
-            .quads_for_pattern(None, Some(pred_id.as_ref()), None, Some(graph.as_ref().into()))
+            .quads_for_pattern(
+                None,
+                Some(pred_id.as_ref()),
+                None,
+                Some(graph.as_ref().into()),
+            )
             .flatten()
         {
             if let Term::Literal(lit) = &quad.object {

@@ -121,11 +121,13 @@ impl TransactionRegistry {
     ///
     /// Opens a temporary transaction, replays all buffered ops, runs the query,
     /// then drops the transaction (rollback — no side effects).
-    pub fn query(&self, txn_id: &str, store: &Store, sparql: &str) -> Result<String, TransactionError> {
-        let txn = self
-            .txns
-            .get(txn_id)
-            .ok_or(TransactionError::NotFound)?;
+    pub fn query(
+        &self,
+        txn_id: &str,
+        store: &Store,
+        sparql: &str,
+    ) -> Result<String, TransactionError> {
+        let txn = self.txns.get(txn_id).ok_or(TransactionError::NotFound)?;
         let ops = txn.ops.clone();
         drop(txn); // release DashMap lock before taking store transaction
 
@@ -152,10 +154,7 @@ impl TransactionRegistry {
     /// Commit the transaction: replay all buffered ops into a real transaction.
     /// Returns the committed ops for changelog recording.
     pub fn commit(&self, txn_id: &str, store: &Store) -> Result<CommitResult, TransactionError> {
-        let (_, active) = self
-            .txns
-            .remove(txn_id)
-            .ok_or(TransactionError::NotFound)?;
+        let (_, active) = self.txns.remove(txn_id).ok_or(TransactionError::NotFound)?;
 
         let mut db_txn = store
             .start_transaction()
@@ -179,9 +178,7 @@ impl TransactionRegistry {
 
     /// Rollback (discard) a transaction.
     pub fn rollback(&self, txn_id: &str) -> Result<(), TransactionError> {
-        self.txns
-            .remove(txn_id)
-            .ok_or(TransactionError::NotFound)?;
+        self.txns.remove(txn_id).ok_or(TransactionError::NotFound)?;
         #[cfg(feature = "otel")]
         if let Some(m) = crate::telemetry::metrics() {
             m.active_transactions.dec();
@@ -210,7 +207,6 @@ impl TransactionRegistry {
         }
         count
     }
-
 }
 
 /// Replay buffered operations into a real `Transaction`.
