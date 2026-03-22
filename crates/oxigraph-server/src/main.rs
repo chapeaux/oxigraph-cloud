@@ -1,3 +1,7 @@
+mod changelog;
+mod transactions;
+
+use changelog::{Changelog, ChangelogError, entry_to_detail_json, entry_to_list_json};
 use clap::Parser;
 use oxhttp::Server;
 use oxhttp::model::header::{
@@ -21,6 +25,7 @@ use std::sync::Mutex;
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 use std::{fmt, str};
+use transactions::{TransactionError, TransactionRegistry};
 use url::form_urlencoded;
 
 #[cfg(feature = "shacl")]
@@ -97,6 +102,20 @@ struct Args {
     /// Required when binding to a non-localhost address.
     #[arg(long, env = "OXIGRAPH_WRITE_KEY")]
     write_key: Option<String>,
+
+    /// Enable changelog recording for write operations.
+    /// When enabled, all writes are recorded and can be undone via /changelog/{id}/undo.
+    #[arg(long, default_value_t = false)]
+    changelog: bool,
+
+    /// Maximum number of changelog entries to retain (0 = unlimited).
+    #[arg(long, default_value_t = 100)]
+    changelog_retain: usize,
+
+    /// Transaction idle timeout in seconds.
+    /// Transactions inactive longer than this are automatically rolled back.
+    #[arg(long, default_value_t = 60)]
+    transaction_timeout: u64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -163,6 +182,30 @@ fn main() -> anyhow::Result<()> {
         tracing::info!(shacl_mode = ?shacl_mode, "SHACL validation mode enabled (hooks not yet wired)");
     }
 
+    // Transaction registry and changelog
+    let txn_timeout = Duration::from_secs(args.transaction_timeout);
+    let registry = Arc::new(TransactionRegistry::new(txn_timeout));
+    let changelog = Arc::new(Changelog::new(args.changelog, args.changelog_retain));
+    changelog.init_counter(&store);
+
+    if args.changelog {
+        tracing::info!(retain = args.changelog_retain, "Changelog enabled");
+    }
+
+    // Spawn background cleanup for expired transactions
+    {
+        let reg = Arc::clone(&registry);
+        std::thread::spawn(move || -> ! {
+            loop {
+                std::thread::sleep(Duration::from_secs(30));
+                let cleaned = reg.cleanup_expired();
+                if cleaned > 0 {
+                    tracing::info!(count = cleaned, "Cleaned up expired transactions");
+                }
+            }
+        });
+    }
+
     #[cfg(feature = "shacl")]
     let validator = {
         let lib_mode = match shacl_mode {
@@ -182,6 +225,8 @@ fn main() -> anyhow::Result<()> {
         max_upload_size,
         write_key,
         &validator,
+        &registry,
+        &changelog,
     );
 
     #[cfg(not(feature = "shacl"))]
@@ -192,10 +237,13 @@ fn main() -> anyhow::Result<()> {
         query_timeout,
         max_upload_size,
         write_key,
+        &registry,
+        &changelog,
     )
 }
 
 #[cfg(feature = "shacl")]
+#[expect(clippy::too_many_arguments)]
 fn serve(
     store: Store,
     bind: &str,
@@ -204,11 +252,15 @@ fn serve(
     max_upload_size: u64,
     write_key: Option<String>,
     validator: &Arc<Mutex<ShaclValidator>>,
+    registry: &Arc<TransactionRegistry>,
+    changelog: &Arc<Changelog>,
 ) -> anyhow::Result<()> {
     let write_key = Arc::new(write_key);
     let mut server = if cors_origins.is_empty() {
         let v = Arc::clone(validator);
         let wk = Arc::clone(&write_key);
+        let reg = Arc::clone(registry);
+        let cl = Arc::clone(changelog);
         Server::new(move |request| {
             handle_request(
                 request,
@@ -217,12 +269,16 @@ fn serve(
                 query_timeout,
                 max_upload_size,
                 &wk,
+                &reg,
+                &cl,
             )
             .unwrap_or_else(|(status, message)| error(status, message))
         })
     } else {
         let v = Arc::clone(validator);
         let wk = Arc::clone(&write_key);
+        let reg = Arc::clone(registry);
+        let cl = Arc::clone(changelog);
         let origins = cors_origins.to_owned();
         Server::new(cors_middleware(
             move |request| {
@@ -233,6 +289,8 @@ fn serve(
                     query_timeout,
                     max_upload_size,
                     &wk,
+                    &reg,
+                    &cl,
                 )
                 .unwrap_or_else(|(status, message)| error(status, message))
             },
@@ -260,20 +318,26 @@ fn serve(
     query_timeout: Duration,
     max_upload_size: u64,
     write_key: Option<String>,
+    registry: &Arc<TransactionRegistry>,
+    changelog: &Arc<Changelog>,
 ) -> anyhow::Result<()> {
     let write_key = Arc::new(write_key);
     let mut server = if cors_origins.is_empty() {
         let wk = Arc::clone(&write_key);
+        let reg = Arc::clone(registry);
+        let cl = Arc::clone(changelog);
         Server::new(move |request| {
-            handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
+            handle_request(request, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
                 .unwrap_or_else(|(status, message)| error(status, message))
         })
     } else {
         let wk = Arc::clone(&write_key);
+        let reg = Arc::clone(registry);
+        let cl = Arc::clone(changelog);
         let origins = cors_origins.to_owned();
         Server::new(cors_middleware(
             move |request| {
-                handle_request(request, store.clone(), query_timeout, max_upload_size, &wk)
+                handle_request(request, store.clone(), query_timeout, max_upload_size, &wk, &reg, &cl)
                     .unwrap_or_else(|(status, message)| error(status, message))
             },
             origins,
@@ -357,6 +421,7 @@ fn cors_middleware(
 type HttpError = (StatusCode, String);
 
 #[cfg(feature = "shacl")]
+#[expect(clippy::too_many_arguments)]
 fn handle_request(
     request: &mut Request<Body>,
     store: Store,
@@ -364,6 +429,8 @@ fn handle_request(
     query_timeout: Duration,
     max_upload_size: u64,
     write_key: &Option<String>,
+    registry: &TransactionRegistry,
+    changelog: &Changelog,
 ) -> Result<Response<Body>, HttpError> {
     let method = request.method().as_ref().to_owned();
     let path = request.uri().path().to_owned();
@@ -432,7 +499,15 @@ fn handle_request(
                 .body(Body::empty())
                 .map_err(internal_server_error)
         }
-        _ => handle_request_core(request, store, query_timeout, max_upload_size, write_key),
+        _ => handle_request_core(
+            request,
+            store,
+            query_timeout,
+            max_upload_size,
+            write_key,
+            registry,
+            changelog,
+        ),
     }
 }
 
@@ -443,11 +518,21 @@ fn handle_request(
     query_timeout: Duration,
     max_upload_size: u64,
     write_key: &Option<String>,
+    registry: &TransactionRegistry,
+    changelog: &Changelog,
 ) -> Result<Response<Body>, HttpError> {
     let method = request.method().as_ref().to_owned();
     let path = request.uri().path().to_owned();
     tracing::info!(method = %method, path = %path, "Incoming request");
-    handle_request_core(request, store, query_timeout, max_upload_size, write_key)
+    handle_request_core(
+        request,
+        store,
+        query_timeout,
+        max_upload_size,
+        write_key,
+        registry,
+        changelog,
+    )
 }
 
 fn handle_request_core(
@@ -456,8 +541,31 @@ fn handle_request_core(
     query_timeout: Duration,
     max_upload_size: u64,
     write_key: &Option<String>,
+    registry: &TransactionRegistry,
+    changelog: &Changelog,
 ) -> Result<Response<Body>, HttpError> {
-    match (request.uri().path(), request.method().as_ref()) {
+    let path = request.uri().path().to_owned();
+    let method = request.method().as_ref().to_owned();
+
+    // Check for transaction endpoints: /transactions or /transactions/{id}/...
+    if let Some(rest) = path.strip_prefix("/transactions") {
+        return handle_transaction_routes(
+            request,
+            &store,
+            write_key,
+            registry,
+            changelog,
+            rest,
+            &method,
+        );
+    }
+
+    // Check for changelog endpoints: /changelog or /changelog/{id}/...
+    if let Some(rest) = path.strip_prefix("/changelog") {
+        return handle_changelog_routes(request, &store, write_key, changelog, rest, &method);
+    }
+
+    match (path.as_str(), method.as_str()) {
         // --- Health & readiness (always open) ---
         ("/health", "GET") => Response::builder()
             .status(StatusCode::OK)
@@ -481,6 +589,8 @@ fn handle_request_core(
                 "<html><body>\
                  <h1>Oxigraph Cloud SPARQL Server</h1>\
                  <p>Endpoints: POST /query, POST /update, POST /store</p>\
+                 <p>Transaction API: POST /transactions, /transactions/{id}/...</p>\
+                 <p>Changelog: GET /changelog, POST /changelog/{id}/undo</p>\
                  </body></html>"
                     .into(),
             )
@@ -584,6 +694,260 @@ fn handle_request_core(
             StatusCode::NOT_FOUND,
             format!("Not found: {} {}", request.method(), request.uri().path()),
         )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Transaction endpoint handlers
+// ---------------------------------------------------------------------------
+
+fn handle_transaction_routes(
+    request: &mut Request<Body>,
+    store: &Store,
+    write_key: &Option<String>,
+    registry: &TransactionRegistry,
+    changelog: &Changelog,
+    rest: &str,
+    method: &str,
+) -> Result<Response<Body>, HttpError> {
+    // POST /transactions — begin
+    if rest.is_empty() && method == "POST" {
+        check_write_auth(request, write_key)?;
+        let txn_id = registry.begin();
+        return Response::builder()
+            .status(StatusCode::CREATED)
+            .header(CONTENT_TYPE, "application/json")
+            .header("Location", format!("/transactions/{txn_id}"))
+            .body(format!("{{\"transaction_id\":\"{txn_id}\"}}").into())
+            .map_err(internal_server_error);
+    }
+
+    // Parse /{id} or /{id}/action
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
+    let (txn_id, action) = match rest.split_once('/') {
+        Some((id, action)) => (id, action),
+        None => (rest, ""),
+    };
+
+    if txn_id.is_empty() {
+        return Err(bad_request("Missing transaction ID"));
+    }
+
+    match (action, method) {
+        // PUT /transactions/{id}/add
+        ("add", "PUT") => {
+            check_write_auth(request, write_key)?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
+            let format =
+                RdfFormat::from_media_type(&ct).ok_or_else(|| unsupported_media_type(&ct))?;
+            let body = limited_body(request)?;
+            let count = registry
+                .add(txn_id, format, &body)
+                .map_err(txn_error_to_http)?;
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .body(format!("{{\"added\":{count}}}").into())
+                .map_err(internal_server_error)
+        }
+
+        // PUT /transactions/{id}/remove
+        ("remove", "PUT") => {
+            check_write_auth(request, write_key)?;
+            let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
+            let format =
+                RdfFormat::from_media_type(&ct).ok_or_else(|| unsupported_media_type(&ct))?;
+            let body = limited_body(request)?;
+            let count = registry
+                .remove(txn_id, format, &body)
+                .map_err(txn_error_to_http)?;
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .body(format!("{{\"removed\":{count}}}").into())
+                .map_err(internal_server_error)
+        }
+
+        // POST /transactions/{id}/query
+        ("query", "POST") => {
+            let sparql = limited_string_body(request)?;
+            let result = registry
+                .query(txn_id, store, &sparql)
+                .map_err(txn_error_to_http)?;
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/sparql-results+json")
+                .body(result.into())
+                .map_err(internal_server_error)
+        }
+
+        // POST /transactions/{id}/update
+        ("update", "POST") => {
+            check_write_auth(request, write_key)?;
+            let sparql = limited_string_body(request)?;
+            registry
+                .update(txn_id, sparql)
+                .map_err(txn_error_to_http)?;
+            Response::builder()
+                .status(StatusCode::NO_CONTENT)
+                .body(Body::empty())
+                .map_err(internal_server_error)
+        }
+
+        // PUT /transactions/{id}/commit
+        ("commit", "PUT") => {
+            check_write_auth(request, write_key)?;
+            let result = registry
+                .commit(txn_id, store)
+                .map_err(txn_error_to_http)?;
+
+            // Record in changelog if enabled
+            if changelog.is_enabled() {
+                drop(changelog.record(store, &result.ops, "transaction"));
+            }
+
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .header("X-Transaction-Id", &result.txn_id)
+                .body(
+                    format!(
+                        "{{\"committed\":true,\"transaction_id\":\"{}\"}}",
+                        result.txn_id
+                    )
+                    .into(),
+                )
+                .map_err(internal_server_error)
+        }
+
+        // DELETE /transactions/{id} — rollback
+        ("", "DELETE") => {
+            check_write_auth(request, write_key)?;
+            registry.rollback(txn_id).map_err(txn_error_to_http)?;
+            Response::builder()
+                .status(StatusCode::NO_CONTENT)
+                .body(Body::empty())
+                .map_err(internal_server_error)
+        }
+
+        _ => Err((
+            StatusCode::NOT_FOUND,
+            format!("Not found: {method} /transactions/{rest}"),
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Changelog endpoint handlers
+// ---------------------------------------------------------------------------
+
+fn handle_changelog_routes(
+    request: &mut Request<Body>,
+    store: &Store,
+    write_key: &Option<String>,
+    changelog: &Changelog,
+    rest: &str,
+    method: &str,
+) -> Result<Response<Body>, HttpError> {
+    // GET /changelog — list entries
+    if rest.is_empty() && method == "GET" {
+        let offset: usize = url_query_parameter(request, "offset")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let limit: usize = url_query_parameter(request, "limit")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20);
+
+        let entries = changelog
+            .list(store, offset, limit)
+            .map_err(changelog_error_to_http)?;
+        let json_entries: Vec<String> = entries.iter().map(entry_to_list_json).collect();
+        let body = format!("{{\"entries\":[{}]}}", json_entries.join(","));
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.into())
+            .map_err(internal_server_error);
+    }
+
+    // DELETE /changelog — purge all
+    if rest.is_empty() && method == "DELETE" {
+        check_write_auth(request, write_key)?;
+        let count = changelog
+            .purge(store)
+            .map_err(changelog_error_to_http)?;
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(CONTENT_TYPE, "application/json")
+            .body(format!("{{\"purged\":{count}}}").into())
+            .map_err(internal_server_error);
+    }
+
+    // Parse /{id} or /{id}/undo
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
+    let (id_str, action) = match rest.split_once('/') {
+        Some((id, action)) => (id, action),
+        None => (rest, ""),
+    };
+
+    let id: u64 = id_str
+        .parse()
+        .map_err(|_| bad_request(format!("Invalid changelog ID: {id_str}")))?;
+
+    match (action, method) {
+        // GET /changelog/{id} — get detail
+        ("", "GET") => {
+            let entry = changelog
+                .get(store, id)
+                .map_err(changelog_error_to_http)?
+                .ok_or_else(|| (StatusCode::NOT_FOUND, "Changelog entry not found".to_owned()))?;
+            let body = entry_to_detail_json(&entry);
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .body(body.into())
+                .map_err(internal_server_error)
+        }
+
+        // POST /changelog/{id}/undo
+        ("undo", "POST") => {
+            check_write_auth(request, write_key)?;
+            let undo_entry = changelog
+                .undo(store, id)
+                .map_err(changelog_error_to_http)?;
+            let body = entry_to_detail_json(&undo_entry);
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .header("X-Transaction-Id", undo_entry.id.to_string())
+                .body(body.into())
+                .map_err(internal_server_error)
+        }
+
+        _ => Err((
+            StatusCode::NOT_FOUND,
+            format!("Not found: {method} /changelog/{rest}"),
+        )),
+    }
+}
+
+fn txn_error_to_http(e: TransactionError) -> HttpError {
+    match e {
+        TransactionError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
+        TransactionError::Parse(msg) | TransactionError::Query(msg) => {
+            (StatusCode::BAD_REQUEST, msg)
+        }
+        TransactionError::Storage(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+    }
+}
+
+fn changelog_error_to_http(e: ChangelogError) -> HttpError {
+    match e {
+        ChangelogError::Disabled | ChangelogError::NotFound => {
+            (StatusCode::NOT_FOUND, e.to_string())
+        }
+        ChangelogError::NotUndoable => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
+        ChangelogError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
     }
 }
 

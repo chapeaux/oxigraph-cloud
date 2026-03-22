@@ -21,6 +21,7 @@ integration-tests = ["oxigraph-tikv/integration-tests"]
 [dependencies]
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
+dashmap.workspace = true
 oxhttp = { workspace = true, features = ["flate2"] }
 oxigraph = { workspace = true, default-features = false }
 oxigraph-tikv = { path = "../oxigraph-tikv", optional = true }
@@ -30,6 +31,7 @@ flate2.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["json"] }
 url.workspace = true
+uuid = { version = "1", features = ["v4"] }
 
 [lints]
 workspace = true
