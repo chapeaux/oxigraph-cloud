@@ -2,10 +2,7 @@ name: Container Build
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
 
 env:
   QUAY_REGISTRY: quay.io
@@ -47,37 +44,25 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Quay.io
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.QUAY_REGISTRY }}
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
-      - name: Determine tags
-        id: tags
-        run: |
-          TAGS=""
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-            TAGS="${{ env.QUAY_IMAGE }}:${VERSION}${{ matrix.tag_suffix }}"
-            TAGS="${TAGS},${{ env.QUAY_IMAGE }}:latest${{ matrix.tag_suffix }}"
-          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
-            SHA=$(echo "$GITHUB_SHA" | head -c 7)
-            TAGS="${{ env.QUAY_IMAGE }}:main${{ matrix.tag_suffix }}"
-            TAGS="${TAGS},${{ env.QUAY_IMAGE }}:sha-${SHA}${{ matrix.tag_suffix }}"
-          else
-            TAGS="${{ env.QUAY_IMAGE }}:pr-${{ github.event.number }}${{ matrix.tag_suffix }}"
-          fi
-          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (${{ matrix.variant }})
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./${{ matrix.containerfile }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.tags.outputs.tags }}
+          push: true
+          tags: |
+            ${{ env.QUAY_IMAGE }}:${{ steps.version.outputs.VERSION }}${{ matrix.tag_suffix }}
+            ${{ env.QUAY_IMAGE }}:latest${{ matrix.tag_suffix }}
           build-args: |
             EXTRA_FEATURES=${{ matrix.extra_features }}
           platforms: linux/amd64

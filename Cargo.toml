@@ -30,7 +30,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.7.1"
+version = "0.7.2"
 authors = ["Tpt <thomas@pellissier-tanon.fr>"]
 license = "MIT OR Apache-2.0"
 edition = "2024"
@@ -93,12 +93,12 @@ wasm-bindgen-futures = "0.4.58"
 wkt = "0.14"
 
 # Internal oxigraph dependencies (paths relative to workspace root)
-oxigraph = { version = "=0.7.1", path = "oxigraph/lib/oxigraph", default-features = false }
+oxigraph = { version = "=0.7.2", path = "oxigraph/lib/oxigraph", default-features = false }
 oxjsonld = { version = "=0.2.4", path = "oxigraph/lib/oxjsonld" }
 oxrdf = { version = "=0.3.3", path = "oxigraph/lib/oxrdf" }
 oxrdfio = { version = "=0.2.4", path = "oxigraph/lib/oxrdfio" }
 oxrdfxml = { version = "=0.2.3", path = "oxigraph/lib/oxrdfxml" }
-oxrocksdb-sys = { version = "=0.7.1", path = "oxigraph/oxrocksdb-sys" }
+oxrocksdb-sys = { version = "=0.7.2", path = "oxigraph/oxrocksdb-sys" }
 oxsdatatypes = { version = "=0.2.2", path = "oxigraph/lib/oxsdatatypes" }
 oxttl = { version = "=0.2.3", path = "oxigraph/lib/oxttl" }
 spargebra = { version = "=0.4.6", path = "oxigraph/lib/spargebra" }

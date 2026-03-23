@@ -31,7 +31,7 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 - **Changelog**: `GET /changelog`, `POST /changelog/{id}/undo` — opt-in via `--changelog`
 - **OpenTelemetry**: `--features otel` enables Prometheus `/metrics` endpoint and OTLP trace export (`--otel`, `--otel-endpoint`)
 - **Telemetry module**: `crates/oxigraph-server/src/telemetry.rs` — metrics, tracing init, `/metrics` handler
-- **Container images**: `quay.io/ldary/oxigraph-cloud:0.7.1` (RocksDB + SHACL), plus `-tikv`, `-otel`, `-tikv-otel` variants
+- **Container images**: `quay.io/ldary/oxigraph-cloud:0.7.2` (RocksDB + SHACL), plus `-tikv`, `-otel`, `-tikv-otel` variants
 - **CI/CD**: GitHub Actions matrix builds all 4 image variants, pushes to quay.io on main/tags
 - **Base image**: `ubi9/ubi-micro` (near-zero CVEs), stable Rust toolchain
 
