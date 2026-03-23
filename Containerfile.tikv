@@ -48,8 +48,11 @@ LABEL name="oxigraph-cloud" \
       io.k8s.display-name="Oxigraph Cloud (TiKV)" \
       io.openshift.tags="rdf,sparql,triplestore,tikv"
 
-# tikv-client statically links OpenSSL/gRPC — only libstdc++ needed at runtime
+# tikv-client dynamically links OpenSSL and zlib at runtime
 COPY --from=builder /usr/lib64/libstdc++.so.6* /usr/lib64/
+COPY --from=builder /usr/lib64/libssl.so.3* /usr/lib64/
+COPY --from=builder /usr/lib64/libcrypto.so.3* /usr/lib64/
+COPY --from=builder /usr/lib64/libz.so.1* /usr/lib64/
 COPY --from=builder /usr/local/bin/oxigraph-cloud /usr/local/bin/oxigraph-cloud
 
 RUN mkdir -p /opt/oxigraph/data && chmod -R 775 /opt/oxigraph
