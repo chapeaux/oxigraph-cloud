@@ -28,22 +28,24 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 - **SHACL mode flag**: `--shacl-mode off|warn|enforce` (server accepts `strict` as alias for `enforce`)
 - **SHACL mode API**: `PUT /shacl/mode` expects JSON body `{"mode": "enforce"}`
 - **Write auth**: `--write-key` or `OXIGRAPH_WRITE_KEY` env var, `Authorization: Bearer <key>` header
-- **Transactions**: `crates/oxigraph-server/src/transactions.rs` — buffered ops replayed on commit (Transaction<'a> borrows Store, can't span HTTP requests)
+- **Transactions**: `crates/oxigraph-server/src/transactions.rs` — buffered ops replayed on commit (`Transaction<'a>` borrows Store, can't span HTTP requests)
 - **Changelog**: `crates/oxigraph-server/src/changelog.rs` — stored in `<urn:oxigraph:changelog>` named graph, opt-in via `--changelog`
+- **TiKV connection retry**: exponential backoff (5 attempts, 100ms→1.6s) in `TiKvStorage::connect_with_config`
 - **Telemetry**: `crates/oxigraph-server/src/telemetry.rs` — Prometheus metrics via `prometheus` crate, OTLP traces via `tracing-opentelemetry` (feature-gated behind `otel`)
 
 ## Container Images
 
 **Registry**: `quay.io/ldary/oxigraph-cloud`
 
-| Tag suffix | Containerfile | Features | Extra runtime libs |
-|------------|--------------|----------|-------------------|
-| (none) | `Containerfile` | rocksdb, shacl | libstdc++ |
-| `-tikv` | `Containerfile.tikv` | rocksdb, tikv, shacl | libstdc++, libssl, libcrypto, libz |
-| `-otel` | `Containerfile` | rocksdb, shacl, otel | libstdc++ |
-| `-tikv-otel` | `Containerfile.tikv` | rocksdb, tikv, shacl, otel | libstdc++, libssl, libcrypto, libz |
+| Tag suffix | Containerfile | Features | Base image |
+|------------|--------------|----------|------------|
+| (none) | `Containerfile` | rocksdb, shacl | ubi9/ubi-micro |
+| `-tikv` | `Containerfile.tikv` | rocksdb, tikv, shacl | ubi9/ubi-minimal |
+| `-otel` | `Containerfile` | rocksdb, shacl, otel | ubi9/ubi-micro |
+| `-tikv-otel` | `Containerfile.tikv` | rocksdb, tikv, shacl, otel | ubi9/ubi-minimal |
 
-- **Base image**: `ubi9/ubi-micro` (near-zero CVEs), stable Rust toolchain
+- **TiKV variants** use `ubi-minimal` (full glibc NSS resolver for gRPC DNS; installs openssl-libs, zlib, libstdc++ via microdnf)
+- **Default variants** use `ubi-micro` (near-zero CVEs, only libstdc++ copied from builder)
 - **Build arg**: `EXTRA_FEATURES` controls additional cargo features (e.g., `otel`)
 - **CI/CD**: GitHub Actions matrix builds all 4 variants, pushes to quay.io on tag releases only
 

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-03-23
+
+### Changed
+- Upgrade tikv-client 0.3.0 → 0.4.0
+- Unpin rudof crates to allow semver-compatible updates
+- TiKV container base image: ubi-micro → ubi-minimal (fixes gRPC DNS EBUSY)
+- Install TiKV runtime deps via microdnf instead of copying .so files
+- Add TiKV connection retry with exponential backoff (5 attempts)
+
 ## [0.7.3] - 2026-03-23
 
 ### Fixed

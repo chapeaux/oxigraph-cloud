@@ -110,14 +110,16 @@ Run the container:
 podman run -p 7878:7878 oxigraph-cloud
 ```
 
-The Containerfile uses a multi-stage build with Red Hat UBI 9 as the base image. Four image variants are available:
+The Containerfile uses a multi-stage build with Red Hat UBI 9. Four image variants are available:
 
-| Variant | Build command | Features |
-|---------|--------------|----------|
-| Default | `podman build -t oxigraph-cloud .` | RocksDB + SHACL |
-| TiKV | `podman build -t oxigraph-cloud:tikv -f Containerfile.tikv .` | RocksDB + TiKV + SHACL |
-| OTel | `podman build --build-arg EXTRA_FEATURES=otel -t oxigraph-cloud:otel .` | RocksDB + SHACL + OTel |
-| TiKV + OTel | `podman build --build-arg EXTRA_FEATURES=otel -t oxigraph-cloud:tikv-otel -f Containerfile.tikv .` | All features |
+| Variant | Build command | Features | Base |
+|---------|--------------|----------|------|
+| Default | `podman build -t oxigraph-cloud .` | RocksDB + SHACL | ubi-micro |
+| TiKV | `podman build -t oxigraph-cloud:tikv -f Containerfile.tikv .` | RocksDB + TiKV + SHACL | ubi-minimal |
+| OTel | `podman build --build-arg EXTRA_FEATURES=otel -t oxigraph-cloud:otel .` | RocksDB + SHACL + OTel | ubi-micro |
+| TiKV + OTel | `podman build --build-arg EXTRA_FEATURES=otel -t oxigraph-cloud:tikv-otel -f Containerfile.tikv .` | All features | ubi-minimal |
+
+TiKV variants use `ubi-minimal` for full glibc DNS resolution (required by gRPC). Default variants use the smaller `ubi-micro`.
 
 Pre-built images are available at `quay.io/ldary/oxigraph-cloud` with tag suffixes: `:latest`, `:-tikv`, `:-otel`, `:-tikv-otel`.
 
