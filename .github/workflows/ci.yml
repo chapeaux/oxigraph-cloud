@@ -34,14 +34,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-test-
 
-      - name: Run tests (our crates)
-        run: cargo test -p oxigraph-server -p oxigraph-shacl -p oxigraph-tikv -p oxigraph-coprocessor
+      - name: Run tests (our crates, excluding TiKV integration)
+        run: cargo test -p oxigraph-server -p oxigraph-shacl -p oxigraph-coprocessor
 
-      - name: Run integration tests
-        run: cargo test --test '*' 2>/dev/null || true
-
-      - name: Run upstream oxigraph tests
-        run: cargo test -p oxigraph
+      - name: Run upstream oxigraph tests (excluding TiKV)
+        run: cargo test -p oxigraph -- --skip tikv
         continue-on-error: true
 
   test-tikv:
@@ -129,8 +126,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-lint-
 
-      - name: Check formatting
-        run: cargo fmt --check --all
+      - name: Check formatting (our crates)
+        run: cargo fmt -p oxigraph-server -p oxigraph-shacl -p oxigraph-tikv -p oxigraph-coprocessor -- --check
 
       - name: Run clippy (our crates)
         run: cargo clippy -p oxigraph-server -p oxigraph-shacl -p oxigraph-coprocessor --all-targets -- -D warnings

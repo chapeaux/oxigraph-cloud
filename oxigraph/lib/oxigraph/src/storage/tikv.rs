@@ -58,6 +58,7 @@ impl TiKvConfig {
     }
 
     /// Set the scan batch size for prefetching.
+    #[allow(dead_code)]
     pub fn with_scan_batch_size(mut self, batch_size: usize) -> Self {
         self.scan_batch_size = batch_size;
         self

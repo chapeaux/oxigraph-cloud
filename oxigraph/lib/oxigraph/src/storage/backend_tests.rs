@@ -17,7 +17,7 @@ macro_rules! conformance_tests {
     ($mod_name:ident, $factory:expr) => {
         #[cfg(test)]
         mod $mod_name {
-            use crate::model::{GraphNameRef, NamedOrBlankNodeRef, QuadRef};
+            use crate::model::{GraphNameRef, QuadRef};
             use crate::storage::Storage;
             use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm};
             use oxrdf::NamedNodeRef;
