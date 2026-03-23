@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tikv-cluster
+description: TiKV distributed key-value store cluster (PD + TiKV) for Oxigraph Cloud
+type: application
+version: 0.1.0
+appVersion: "8.5.0"
+keywords:
+  - tikv
+  - pd
+  - distributed
+  - key-value
+home: https://tikv.org
+sources:
+  - https://github.com/tikv/tikv
+maintainers:
+  - name: oxigraph-cloud

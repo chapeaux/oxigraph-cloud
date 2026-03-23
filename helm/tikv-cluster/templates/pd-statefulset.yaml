@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "tikv-cluster.fullname" . }}-pd
+  labels:
+    {{- include "tikv-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pd
+spec:
+  serviceName: {{ include "tikv-cluster.fullname" . }}-pd-headless
+  replicas: {{ .Values.pd.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: pd
+  template:
+    metadata:
+      labels:
+        {{- include "tikv-cluster.labels" . | nindent 8 }}
+        app.kubernetes.io/component: pd
+    spec:
+      containers:
+        - name: pd
+          image: "{{ .Values.pd.image.repository }}:{{ .Values.pd.image.tag }}"
+          imagePullPolicy: {{ .Values.pd.image.pullPolicy }}
+          ports:
+            - name: client
+              containerPort: 2379
+            - name: peer
+              containerPort: 2380
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command:
+            - pd-server
+            - "--name=$(POD_NAME)"
+            - "--data-dir=/var/lib/pd"
+            - "--client-urls=http://0.0.0.0:2379"
+            - "--peer-urls=http://0.0.0.0:2380"
+            # Advertise client URLs via ClusterIP service (resolvable from any pod)
+            - "--advertise-client-urls=http://{{ include "tikv-cluster.fullname" . }}-pd:2379"
+            # Advertise peer URLs via headless service (for PD-to-PD replication)
+            - "--advertise-peer-urls=http://$(POD_NAME).{{ include "tikv-cluster.fullname" . }}-pd-headless:2380"
+            {{- if gt (int .Values.pd.replicas) 1 }}
+            - "--initial-cluster={{- range $i := until (int .Values.pd.replicas) }}{{- if $i }},{{ end }}{{ include "tikv-cluster.fullname" $ }}-pd-{{ $i }}=http://{{ include "tikv-cluster.fullname" $ }}-pd-{{ $i }}.{{ include "tikv-cluster.fullname" $ }}-pd-headless:2380{{- end }}"
+            {{- end }}
+          volumeMounts:
+            - name: pd-data
+              mountPath: /var/lib/pd
+          resources:
+            {{- toYaml .Values.pd.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /pd/api/v1/health
+              port: client
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /pd/api/v1/health
+              port: client
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: pd-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.pd.storage.storageClass }}
+        storageClassName: {{ .Values.pd.storage.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.pd.storage.size }}

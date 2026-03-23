@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "tikv-cluster.fullname" . }}-tikv
+  labels:
+    {{- include "tikv-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tikv
+spec:
+  serviceName: {{ include "tikv-cluster.fullname" . }}-tikv-headless
+  replicas: {{ .Values.tikv.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: tikv
+  template:
+    metadata:
+      labels:
+        {{- include "tikv-cluster.labels" . | nindent 8 }}
+        app.kubernetes.io/component: tikv
+    spec:
+      containers:
+        - name: tikv
+          image: "{{ .Values.tikv.image.repository }}:{{ .Values.tikv.image.tag }}"
+          imagePullPolicy: {{ .Values.tikv.image.pullPolicy }}
+          ports:
+            - name: tikv
+              containerPort: 20160
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command:
+            - tikv-server
+            - "--addr=0.0.0.0:20160"
+            - "--advertise-addr=$(POD_NAME).{{ include "tikv-cluster.fullname" . }}-tikv-headless:20160"
+            - "--pd={{ include "tikv-cluster.fullname" . }}-pd:2379"
+            - "--data-dir=/var/lib/tikv"
+          volumeMounts:
+            - name: tikv-data
+              mountPath: /var/lib/tikv
+          resources:
+            {{- toYaml .Values.tikv.resources | nindent 12 }}
+          livenessProbe:
+            tcpSocket:
+              port: tikv
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: tikv
+            initialDelaySeconds: 10
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: tikv-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.tikv.storage.storageClass }}
+        storageClassName: {{ .Values.tikv.storage.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.tikv.storage.size }}

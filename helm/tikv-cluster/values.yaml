@@ -1,0 +1,38 @@
+# =============================================================================
+# TiKV Cluster — Default Values
+# =============================================================================
+
+pd:
+  replicas: 1
+  image:
+    repository: pingcap/pd
+    tag: v8.5.0
+    pullPolicy: IfNotPresent
+  storage:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+tikv:
+  replicas: 3
+  image:
+    repository: pingcap/tikv
+    tag: v8.5.0
+    pullPolicy: IfNotPresent
+  storage:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+networkPolicy:
+  enabled: false

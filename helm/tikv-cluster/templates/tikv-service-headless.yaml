@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tikv-cluster.fullname" . }}-tikv-headless
+  labels:
+    {{- include "tikv-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tikv
+spec:
+  clusterIP: None
+  ports:
+    - name: tikv
+      port: 20160
+      targetPort: 20160
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: tikv
