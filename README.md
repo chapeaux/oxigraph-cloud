@@ -165,15 +165,24 @@ See `helm/oxigraph-cloud/values.yaml` for the full list. For a step-by-step sand
 
 ## TiKV Backend
 
-### Start a local TiKV cluster
+### Kubernetes / Helm deployment
+
+Deploy a TiKV cluster using the included Helm chart, then connect Oxigraph:
+
+```bash
+helm install tikv-cluster helm/tikv-cluster
+helm install oxigraph helm/oxigraph-cloud -f helm/oxigraph-cloud/values-tikv.yaml
+```
+
+The `tikv-cluster` chart deploys PD and TiKV as StatefulSets with persistent storage. PD advertises its client URL via a ClusterIP service so that tikv-client can resolve member addresses from any pod.
+
+### Local development (Docker Compose)
 
 ```bash
 docker compose -f docker-compose.tikv.yml up -d
 ```
 
 This starts 1 PD node and 3 TiKV nodes. The PD client endpoint is exposed at `127.0.0.1:2379`.
-
-### Connect Oxigraph to TiKV
 
 ```bash
 ./target/release/oxigraph-cloud \
@@ -182,7 +191,7 @@ This starts 1 PD node and 3 TiKV nodes. The PD client endpoint is exposed at `12
   --bind 127.0.0.1:7878
 ```
 
-### Tear down the cluster
+### Tear down
 
 ```bash
 docker compose -f docker-compose.tikv.yml down      # stop, keep data

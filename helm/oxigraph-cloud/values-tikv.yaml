@@ -8,7 +8,7 @@
 
 image:
   repository: quay.io/ldary/oxigraph-cloud
-  tag: "0.7.4-tikv"
+  tag: "0.7.5-tikv"
   pullPolicy: IfNotPresent
 
 backend: tikv

@@ -11,7 +11,9 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 | `crates/oxigraph-shacl/` | SHACL validation via rudof (validator, shapes, report) |
 | `crates/oxigraph-tikv/` | TiKV config types and integration tests |
 | `crates/oxigraph-coprocessor/` | TiKV Coprocessor plugin (scan, filter, aggregate, bloom) |
-| `deploy/helm/oxigraph-cloud/` | Helm chart (values.yaml, values-tikv.yaml, values-sandbox.yaml) |
+| `helm/oxigraph-cloud/` | Oxigraph Helm chart (values.yaml, values-tikv.yaml, values-sandbox.yaml) |
+| `helm/tikv-cluster/` | TiKV cluster Helm chart (PD + TiKV StatefulSets, services) |
+| `deploy/helm/oxigraph-cloud/` | Legacy Helm chart location |
 | `deploy/k8s/` | Raw Kubernetes manifests |
 | `deploy/openshift/` | OpenShift Kustomize overlay (Route, RBAC) |
 | `deploy/monitoring/` | Prometheus ServiceMonitor + Grafana dashboard |

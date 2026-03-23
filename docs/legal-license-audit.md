@@ -26,10 +26,10 @@ The Oxigraph Cloud-Native project and its dependency tree are **predominantly pe
 
 | Crate | Version | License | Status |
 |-------|---------|---------|--------|
-| oxigraph (fork) | 0.7.4 | MIT OR Apache-2.0 | OK -- fork compliant |
-| oxigraph-tikv | 0.7.4 | MIT OR Apache-2.0 | OK |
-| oxigraph-shacl | 0.7.4 | MIT OR Apache-2.0 | OK |
-| oxigraph-server | 0.7.4 | MIT OR Apache-2.0 | OK |
+| oxigraph (fork) | 0.7.5 | MIT OR Apache-2.0 | OK -- fork compliant |
+| oxigraph-tikv | 0.7.5 | MIT OR Apache-2.0 | OK |
+| oxigraph-shacl | 0.7.5 | MIT OR Apache-2.0 | OK |
+| oxigraph-server | 0.7.5 | MIT OR Apache-2.0 | OK |
 | oxrdf | 0.3.3 | MIT OR Apache-2.0 | OK |
 | oxrdfio | 0.2.4 | MIT OR Apache-2.0 | OK |
 | oxrdfxml | 0.2.3 | MIT OR Apache-2.0 | OK |
@@ -42,11 +42,11 @@ The Oxigraph Cloud-Native project and its dependency tree are **predominantly pe
 | sparopt | 0.3.6 | MIT OR Apache-2.0 | OK |
 | spargeo | 0.5.4 | MIT OR Apache-2.0 | OK |
 | sparql-smith | (dev) | MIT OR Apache-2.0 | OK |
-| oxrocksdb-sys | 0.7.4 | MIT OR Apache-2.0 | OK |
-| oxigraph-cli | 0.7.4 | MIT OR Apache-2.0 | OK |
-| pyoxigraph | 0.7.4 | MIT OR Apache-2.0 | OK (not distributed) |
-| oxigraph-js | 0.7.4 | MIT OR Apache-2.0 | OK (not distributed) |
-| oxigraph-testsuite | 0.7.4 | MIT OR Apache-2.0 | OK (dev only) |
+| oxrocksdb-sys | 0.7.5 | MIT OR Apache-2.0 | OK |
+| oxigraph-cli | 0.7.5 | MIT OR Apache-2.0 | OK |
+| pyoxigraph | 0.7.5 | MIT OR Apache-2.0 | OK (not distributed) |
+| oxigraph-js | 0.7.5 | MIT OR Apache-2.0 | OK (not distributed) |
+| oxigraph-testsuite | 0.7.5 | MIT OR Apache-2.0 | OK (dev only) |
 
 ### 2.2 Rudof / SHACL Ecosystem Crates
 
@@ -130,7 +130,7 @@ The Oxigraph Cloud-Native project and its dependency tree are **predominantly pe
 | quick-xml | (latest) | MIT | OK |
 | json-event-parser | (latest) | MIT OR Apache-2.0 | OK |
 | csv | (latest) | MIT OR Unlicense | OK |
-| rkyv | 0.7.46 | MIT | OK |
+| rkyv | 0.7.56 | MIT | OK |
 | borsh | (latest) | MIT OR Apache-2.0 | OK |
 | protobuf | (latest) | MIT | OK |
 
