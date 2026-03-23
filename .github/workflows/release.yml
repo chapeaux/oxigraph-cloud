@@ -47,9 +47,9 @@ jobs:
       - name: Package binary artifact
         run: |
           mkdir -p dist
-          cp target/release/oxigraph-server dist/oxigraph-server-linux-amd64
-          chmod +x dist/oxigraph-server-linux-amd64
-          sha256sum dist/oxigraph-server-linux-amd64 > dist/oxigraph-server-linux-amd64.sha256
+          cp target/release/oxigraph-cloud dist/oxigraph-cloud-linux-amd64
+          chmod +x dist/oxigraph-cloud-linux-amd64
+          sha256sum dist/oxigraph-cloud-linux-amd64 > dist/oxigraph-cloud-linux-amd64.sha256
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
@@ -255,9 +255,9 @@ jobs:
             ```
 
             ### Binary
-            Download the `oxigraph-server-linux-amd64` binary from the assets below.
-            Verify the checksum: `sha256sum -c oxigraph-server-linux-amd64.sha256`
+            Download the `oxigraph-cloud-linux-amd64` binary from the assets below.
+            Verify the checksum: `sha256sum -c oxigraph-cloud-linux-amd64.sha256`
           files: |
-            dist/oxigraph-server-linux-amd64
-            dist/oxigraph-server-linux-amd64.sha256
+            dist/oxigraph-cloud-linux-amd64
+            dist/oxigraph-cloud-linux-amd64.sha256
             dist/*.tgz
