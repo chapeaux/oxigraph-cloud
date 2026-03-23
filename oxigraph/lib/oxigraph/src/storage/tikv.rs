@@ -120,16 +120,53 @@ impl TiKvStorage {
     }
 
     /// Connect to TiKV with full configuration.
+    ///
+    /// Retries connection with exponential backoff (up to 5 attempts) to handle
+    /// transient DNS or network issues during pod startup.
     pub fn connect_with_config(config: TiKvConfig) -> Result<Self, StorageError> {
         let runtime = Runtime::new().map_err(|e| StorageError::Other(Box::new(e)))?;
-        let client = runtime
-            .block_on(TransactionClient::new(config.pd_endpoints))
-            .map_err(map_tikv_error)?;
+
+        const MAX_RETRIES: u32 = 5;
+        const INITIAL_BACKOFF_MS: u64 = 100;
+
+        let mut last_err = None;
+        for attempt in 0..MAX_RETRIES {
+            match runtime.block_on(TransactionClient::new(config.pd_endpoints.clone())) {
+                Ok(c) => {
+                    if attempt > 0 {
+                        eprintln!("TiKV connection succeeded on attempt {}", attempt + 1);
+                    }
+                    return Self::finish_connect(c, runtime, config.scan_batch_size);
+                }
+                Err(e) => {
+                    let delay = std::time::Duration::from_millis(
+                        INITIAL_BACKOFF_MS * 2_u64.pow(attempt),
+                    );
+                    eprintln!(
+                        "TiKV connection attempt {}/{MAX_RETRIES} failed: {e}, retrying in {}ms",
+                        attempt + 1,
+                        delay.as_millis()
+                    );
+                    last_err = Some(e);
+                    if attempt + 1 < MAX_RETRIES {
+                        std::thread::sleep(delay);
+                    }
+                }
+            }
+        }
+        Err(map_tikv_error(last_err.unwrap()))
+    }
+
+    fn finish_connect(
+        client: TransactionClient,
+        runtime: Runtime,
+        scan_batch_size: usize,
+    ) -> Result<Self, StorageError> {
         let storage = Self {
             inner: Arc::new(TiKvStorageInner {
                 client,
                 runtime,
-                scan_batch_size: config.scan_batch_size,
+                scan_batch_size,
             }),
         };
         storage.ensure_version()?;

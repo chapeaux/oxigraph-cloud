@@ -108,16 +108,16 @@ sparopt = { version = "=0.3.6", path = "oxigraph/lib/sparopt" }
 spareval = { version = "=0.2.6", path = "oxigraph/lib/spareval" }
 
 # Cloud-native extension dependencies
-tikv-client = "0.3"
+tikv-client = "0.4"
 srdf = "0.1.147"
-shacl_validation = "=0.2.7"
+shacl_validation = "0.2.7"
 shacl_ast = "0.2.6"
 prefixmap = "0.2.6"
 iri_s = "0.1.147"
-rudof_rdf = "=0.2.7"
-shacl_ir = "=0.2.7"
-shacl_rdf = "=0.2.6"
-sparql_service = "=0.2.6"
+rudof_rdf = "0.2.7"
+shacl_ir = "0.2.7"
+shacl_rdf = "0.2.6"
+sparql_service = "0.2.6"
 opentelemetry = "0.31"
 opentelemetry_sdk = "0.31"
 opentelemetry-otlp = "0.31"

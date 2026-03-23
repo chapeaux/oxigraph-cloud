@@ -203,7 +203,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     if shacl_mode != ShaclMode::Off {
-        tracing::info!(shacl_mode = ?shacl_mode, "SHACL validation mode enabled (hooks not yet wired)");
+        tracing::info!(shacl_mode = ?shacl_mode, "SHACL validation-on-ingest enabled");
     }
 
     // Metrics (feature-gated, stored globally via OnceLock)

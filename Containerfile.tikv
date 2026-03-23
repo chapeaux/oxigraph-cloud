@@ -41,18 +41,16 @@ RUN if [ -n "$EXTRA_FEATURES" ]; then \
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime
 # ---------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi-micro:latest
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 LABEL name="oxigraph-cloud" \
       summary="Cloud-native Oxigraph with TiKV distributed storage" \
       io.k8s.display-name="Oxigraph Cloud (TiKV)" \
       io.openshift.tags="rdf,sparql,triplestore,tikv"
 
-# tikv-client dynamically links OpenSSL and zlib at runtime
-COPY --from=builder /usr/lib64/libstdc++.so.6* /usr/lib64/
-COPY --from=builder /usr/lib64/libssl.so.3* /usr/lib64/
-COPY --from=builder /usr/lib64/libcrypto.so.3* /usr/lib64/
-COPY --from=builder /usr/lib64/libz.so.1* /usr/lib64/
+# ubi-minimal provides full glibc NSS resolver stack (avoids DNS EBUSY in gRPC).
+# Install runtime dependencies for tikv-client (OpenSSL, zlib) and copy binary.
+RUN microdnf install -y openssl-libs zlib libstdc++ && microdnf clean all
 COPY --from=builder /usr/local/bin/oxigraph-cloud /usr/local/bin/oxigraph-cloud
 
 RUN mkdir -p /opt/oxigraph/data && chmod -R 775 /opt/oxigraph

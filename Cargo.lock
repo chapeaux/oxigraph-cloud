@@ -3787,9 +3787,9 @@ dependencies = [
 
 [[package]]
 name = "rudof_rdf"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ffcd66d4c5d1d865f6a87fd7efe9b5b5ef2dd33b631046e920d601d5eedfbd5"
+checksum = "8ca66e628d80de863acef9be6cc012bcc0fd20cd573b47eb9fb02ca2faa7a48c"
 dependencies = [
  "async-trait",
  "colored 3.1.1",
@@ -4196,9 +4196,9 @@ dependencies = [
 
 [[package]]
 name = "shacl_ir"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55f50af1c00e6b45851550a39225150312688147f0c7569474707bb1ca059fa4"
+checksum = "4da74658cfd723a315d57fb2a9bb35678f8eae747eed4c926ea7d02dabe5fa3a"
 dependencies = [
  "either",
  "iri_s",
@@ -4234,9 +4234,9 @@ dependencies = [
 
 [[package]]
 name = "shacl_validation"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d1800f3d015bb86c57b48f60cf263997fae834ea0d59840372d683dea2a98b4"
+checksum = "83ee41631b937b21d86c796e66603b5c9a45ac0b296493c3dd1e9eedbf7ccb07"
 dependencies = [
  "anyhow",
  "clap",
@@ -4479,9 +4479,9 @@ dependencies = [
 
 [[package]]
 name = "sparql_service"
-version = "0.2.6"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28d1ea203513ee8eb6bd2227cb2f94180479ce5c9ceb712ebf18ba5bc26ed3ff"
+checksum = "12a0cce4f641891d6bb5d55363d07b9972c512e9f4798ba258b36edf83890fa5"
 dependencies = [
  "colored 3.1.1",
  "const_format",
@@ -4673,6 +4673,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "take_mut"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4764,9 +4770,9 @@ dependencies = [
 
 [[package]]
 name = "tikv-client"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "048968e4e3d04db472346770cc19914c6b5ae206fa44677f6a0874d54cd05940"
+checksum = "c62c2bb14a0b248e1d03a9357fac74b148edfc6190fbb04cc7c332eb50d7995d"
 dependencies = [
  "async-recursion",
  "async-trait",
@@ -4784,6 +4790,8 @@ dependencies = [
  "semver",
  "serde",
  "serde_derive",
+ "serde_json",
+ "take_mut",
  "thiserror 1.0.69",
  "tokio",
  "tonic 0.10.2",
@@ -5018,6 +5026,7 @@ dependencies = [
  "axum",
  "base64 0.21.7",
  "bytes",
+ "flate2",
  "h2 0.3.27",
  "http 0.2.12",
  "http-body 0.4.6",
