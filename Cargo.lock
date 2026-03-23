@@ -2525,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "oxigraph"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "bzip2",
  "codspeed-criterion-compat",
@@ -2554,16 +2554,16 @@ dependencies = [
 
 [[package]]
 name = "oxigraph-bench"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "criterion",
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "oxigraph-shacl",
 ]
 
 [[package]]
 name = "oxigraph-cli"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2573,7 +2573,7 @@ dependencies = [
  "clap_mangen",
  "flate2",
  "oxhttp",
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "oxiri",
  "predicates",
  "rand 0.9.2",
@@ -2591,11 +2591,11 @@ dependencies = [
 
 [[package]]
 name = "oxigraph-js"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "oxrdfio 0.2.4",
  "spargeo",
  "tokio",
@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "oxigraph-server"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2616,7 +2616,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "oxhttp",
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "oxigraph-shacl",
  "oxigraph-tikv",
  "oxiri",
@@ -2631,10 +2631,10 @@ dependencies = [
 
 [[package]]
 name = "oxigraph-shacl"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "iri_s",
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "oxrdf 0.3.3",
  "prefixmap 0.2.6",
  "rudof_rdf",
@@ -2656,7 +2656,7 @@ dependencies = [
  "codspeed-criterion-compat",
  "dissimilar",
  "json-event-parser",
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "oxiri",
  "oxjsonld 0.2.4",
  "oxrdf 0.3.3",
@@ -2670,9 +2670,9 @@ dependencies = [
 
 [[package]]
 name = "oxigraph-tikv"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "thiserror 2.0.18",
  "tikv-client",
  "tokio",
@@ -2801,7 +2801,7 @@ dependencies = [
 
 [[package]]
 name = "oxrocksdb-sys"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "bindgen",
  "cc",
@@ -3341,9 +3341,9 @@ dependencies = [
 
 [[package]]
 name = "pyoxigraph"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
- "oxigraph 0.7.0",
+ "oxigraph 0.7.1",
  "pyo3",
  "spargeo",
 ]

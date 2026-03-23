@@ -13,7 +13,7 @@
 | Route | `oxigraph` | `oxigraph-ldary-dev.apps.rm3.7wse.p1.openshiftapps.com` (edge TLS) |
 | PVC | `oxigraph-storage-oxigraph-0` | 1Gi RWO (gp3) |
 
-**Image**: `quay.io/ldary/oxigraph-cloud:0.7.0`
+**Image**: `quay.io/ldary/oxigraph-cloud:0.7.1`
 **Backend**: RocksDB (embedded)
 **SHACL**: Enabled (built with `shacl` feature)
 **Write Auth**: Enabled (`--write-key`)

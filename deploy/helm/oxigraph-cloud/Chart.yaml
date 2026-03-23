@@ -2,8 +2,8 @@ apiVersion: v2
 name: oxigraph-cloud
 description: Cloud-native Oxigraph SPARQL server with TiKV storage and SHACL validation
 type: application
-version: 0.7.0
-appVersion: "0.7.0"
+version: 0.7.1
+appVersion: "0.7.1"
 keywords:
   - rdf
   - sparql

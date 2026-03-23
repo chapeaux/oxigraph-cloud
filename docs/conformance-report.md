@@ -1,6 +1,6 @@
 # Conformance Report
 
-**Date**: 2026-03-22 | **Version**: 0.7.0
+**Date**: 2026-03-22 | **Version**: 0.7.1
 
 ## W3C SPARQL 1.1 Conformance
 
