@@ -110,11 +110,16 @@ Run the container:
 podman run -p 7878:7878 oxigraph-cloud
 ```
 
-The Containerfile uses a multi-stage build with Red Hat UBI 9 as the base image. The runtime image includes the compiled binary with SHACL validation support and required shared libraries. A TiKV-enabled variant is also available:
+The Containerfile uses a multi-stage build with Red Hat UBI 9 as the base image. Four image variants are available:
 
-```bash
-podman build -t oxigraph-cloud:tikv -f Containerfile.tikv .
-```
+| Variant | Build command | Features |
+|---------|--------------|----------|
+| Default | `podman build -t oxigraph-cloud .` | RocksDB + SHACL |
+| TiKV | `podman build -t oxigraph-cloud:tikv -f Containerfile.tikv .` | RocksDB + TiKV + SHACL |
+| OTel | `podman build --build-arg EXTRA_FEATURES=otel -t oxigraph-cloud:otel .` | RocksDB + SHACL + OTel |
+| TiKV + OTel | `podman build --build-arg EXTRA_FEATURES=otel -t oxigraph-cloud:tikv-otel -f Containerfile.tikv .` | All features |
+
+Pre-built images are available at `quay.io/ldary/oxigraph-cloud` with tag suffixes: `:latest`, `:-tikv`, `:-otel`, `:-tikv-otel`.
 
 To persist data across container restarts:
 
@@ -148,6 +153,8 @@ helm install oxigraph helm/oxigraph-cloud \
 | `storage.size` | `10Gi` | PVC size for RocksDB data |
 | `route.enabled` | `false` | Create an OpenShift Route |
 | `monitoring.enabled` | `false` | Enable Prometheus ServiceMonitor |
+| `monitoring.otel.enabled` | `false` | Enable OpenTelemetry (adds `--otel` flag and env vars) |
+| `monitoring.otel.endpoint` | `""` | OTLP exporter endpoint |
 | `tls.enabled` | `false` | Enable mTLS for Oxigraph-to-TiKV communication |
 | `resources.requests.cpu` | `100m` | CPU request |
 | `resources.requests.memory` | `256Mi` | Memory request |
@@ -224,6 +231,51 @@ curl -X POST http://127.0.0.1:7878/shacl/validate \
 When validation mode is `strict`/`enforce`, inserting data that violates shapes returns HTTP 422 with a SHACL validation report. The report format is content-negotiated: request `application/json` for a simplified JSON report, or `text/turtle` for the W3C SHACL Validation Report in RDF.
 
 For the full API specification, see [docs/shacl-api-spec.md](docs/shacl-api-spec.md).
+
+## HTTP Transactions
+
+Multi-step write operations can be composed into atomic transactions:
+
+```bash
+# Begin a transaction
+TXN_URL=$(curl -s -X POST http://127.0.0.1:7878/transactions \
+  -H "Content-Type: application/json" | python3 -c "import sys,json; print(json.load(sys.stdin)['transaction_id'])")
+
+# Add data within the transaction
+curl -X PUT "http://127.0.0.1:7878/transactions/$TXN_URL/add" \
+  -H "Content-Type: text/turtle" \
+  -d '<http://example.org/x> <http://example.org/p> "hello" .'
+
+# Query within the transaction (sees uncommitted data)
+curl -X POST "http://127.0.0.1:7878/transactions/$TXN_URL/query" \
+  -H "Content-Type: application/sparql-query" \
+  -d 'SELECT * WHERE { ?s ?p ?o }'
+
+# Commit (or DELETE to rollback)
+curl -X PUT "http://127.0.0.1:7878/transactions/$TXN_URL/commit"
+```
+
+Transactions use a buffered operations pattern and are automatically cleaned up after `--transaction-timeout` seconds of inactivity (default: 60s).
+
+## Changelog and Undo
+
+Enable changelog recording to track and revert write operations:
+
+```bash
+# Start server with changelog enabled
+./target/release/oxigraph-cloud --changelog --location /tmp/oxigraph-data
+
+# After making writes, list changelog entries
+curl http://127.0.0.1:7878/changelog
+
+# Undo a specific transaction
+curl -X POST http://127.0.0.1:7878/changelog/1/undo
+
+# View details of a changelog entry
+curl http://127.0.0.1:7878/changelog/1
+```
+
+Changelog entries are stored as RDF in the `<urn:oxigraph:changelog>` named graph and are retained up to `--changelog-retain` entries (default: 100).
 
 ## OpenTelemetry Observability
 
