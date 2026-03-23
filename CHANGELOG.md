@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-03-22
+
+### Added
+- HTTP transaction API (begin/commit/rollback with buffered multi-step writes)
+- Changelog with undo support (opt-in via `--changelog`, stored in named graph)
+- OpenTelemetry observability behind `otel` cargo feature (Prometheus `/metrics`, OTLP traces)
+- CI/CD matrix builds for all 4 image variants (default, tikv, otel, tikv-otel) pushed to quay.io
+- `EXTRA_FEATURES` build arg in Containerfiles for composable feature sets
+
+### Changed
+- Pin rudof crates to exact versions to avoid CI breakage from semver-compatible updates
+
 ## [0.6.0] - 2026-03-21
 
 ### Changed
