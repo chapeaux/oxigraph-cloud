@@ -14,14 +14,15 @@ pub use crate::storage::error::{CorruptionError, StorageError};
 use crate::storage::numeric_encoder::{EncodedQuad, EncodedTerm, StrHash, StrLookup, insert_term};
 use oxrdf::Quad;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tikv_client::{BoundRange, Key, KvPair, TransactionClient};
+use tikv_client::{BoundRange, Key, KvPair, TransactionClient, TransactionOptions};
 use tokio::runtime::Runtime;
 
 const LATEST_STORAGE_VERSION: u64 = 1;
 
 /// Default number of entries to prefetch per batch during range scans.
-const DEFAULT_SCAN_BATCH_SIZE: usize = 512;
+const DEFAULT_SCAN_BATCH_SIZE: usize = 4096;
 
 // Table prefix bytes — map column families to prefix bytes
 const TABLE_DEFAULT: u8 = 0x00;
@@ -44,7 +45,7 @@ const BATCH_SIZE: usize = 100_000;
 pub struct TiKvConfig {
     /// PD (Placement Driver) endpoint addresses.
     pub pd_endpoints: Vec<String>,
-    /// Number of entries to prefetch per batch during range scans (default: 512).
+    /// Number of entries to prefetch per batch during range scans (default: 4096).
     pub scan_batch_size: usize,
 }
 
@@ -221,11 +222,16 @@ impl TiKvStorage {
         let txn = self
             .inner
             .runtime
-            .block_on(self.inner.client.begin_optimistic())
+            .block_on(
+                self.inner
+                    .client
+                    .begin_with_options(TransactionOptions::new_optimistic().read_only()),
+            )
             .expect("failed to begin snapshot transaction");
         TiKvStorageReader {
             storage: self.clone(),
             txn: TiKvReaderTxn::Owned(RefCell::new(Some(txn))),
+            str_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -299,6 +305,7 @@ impl<'a> TiKvReaderTxn<'a> {
 pub struct TiKvStorageReader<'a> {
     storage: TiKvStorage,
     txn: TiKvReaderTxn<'a>,
+    str_cache: RefCell<HashMap<StrHash, String>>,
 }
 
 impl Drop for TiKvStorageReader<'_> {
@@ -481,6 +488,7 @@ impl<'a> TiKvStorageReader<'a> {
                     buffer_pos: 0,
                     batch_size,
                     exhausted: dspo_exhausted,
+                    txn: None,
                 };
 
                 let second = TiKvPrefetchQuadIterator {
@@ -492,6 +500,7 @@ impl<'a> TiKvStorageReader<'a> {
                     buffer_pos: 0,
                     batch_size,
                     exhausted: gspo_exhausted,
+                    txn: None,
                 };
 
                 TiKvDecodingQuadIterator::pair(first, second)
@@ -507,6 +516,7 @@ impl<'a> TiKvStorageReader<'a> {
                     buffer_pos: 0,
                     batch_size,
                     exhausted: true,
+                    txn: None,
                 };
                 // Only the first iterator carries the error
                 let _ = &mut first;
@@ -741,6 +751,7 @@ impl<'a> TiKvStorageReader<'a> {
             buffer_pos: 0,
             batch_size: self.storage.scan_batch_size(),
             exhausted: false,
+            txn: None,
         }
     }
 
@@ -849,8 +860,15 @@ impl<'a> TiKvStorageReader<'a> {
 
 impl StrLookup for TiKvStorageReader<'_> {
     fn get_str(&self, key: &StrHash) -> Result<Option<String>, StorageError> {
+        if let Some(cached) = self.str_cache.borrow().get(key) {
+            return Ok(Some(cached.clone()));
+        }
         match self.get_value(TABLE_ID2STR, &key.to_be_bytes())? {
-            Some(v) => Ok(Some(String::from_utf8(v).map_err(CorruptionError::new)?)),
+            Some(v) => {
+                let s = String::from_utf8(v).map_err(CorruptionError::new)?;
+                self.str_cache.borrow_mut().insert(*key, s.clone());
+                Ok(Some(s))
+            }
             None => Ok(None),
         }
     }
@@ -880,6 +898,8 @@ pub struct TiKvPrefetchQuadIterator {
     batch_size: usize,
     /// True when the underlying scan has been fully consumed.
     exhausted: bool,
+    /// Lazily initialized transaction reused across batches.
+    txn: Option<tikv_client::Transaction>,
 }
 
 impl TiKvPrefetchQuadIterator {
@@ -894,12 +914,17 @@ impl TiKvPrefetchQuadIterator {
             BoundRange::from(start..)
         };
 
-        let mut txn = self
-            .storage
-            .inner
-            .runtime
-            .block_on(self.storage.inner.client.begin_optimistic())
-            .map_err(map_tikv_error)?;
+        // Lazily create transaction on first batch, reuse for subsequent batches
+        if self.txn.is_none() {
+            self.txn = Some(
+                self.storage
+                    .inner
+                    .runtime
+                    .block_on(self.storage.inner.client.begin_optimistic())
+                    .map_err(map_tikv_error)?,
+            );
+        }
+        let txn = self.txn.as_mut().unwrap();
         let pairs = self
             .storage
             .inner
@@ -907,7 +932,6 @@ impl TiKvPrefetchQuadIterator {
             .block_on(txn.scan(range, self.batch_size as u32))
             .map_err(map_tikv_error)?;
         let pairs: Vec<KvPair> = pairs.collect();
-        drop(self.storage.inner.runtime.block_on(txn.rollback()));
 
         if pairs.is_empty() || pairs.len() < self.batch_size {
             self.exhausted = true;
@@ -974,6 +998,14 @@ impl Iterator for TiKvPrefetchQuadIterator {
                 self.exhausted = true;
                 Some(Err(e))
             }
+        }
+    }
+}
+
+impl Drop for TiKvPrefetchQuadIterator {
+    fn drop(&mut self) {
+        if let Some(mut txn) = self.txn.take() {
+            let _ = self.storage.inner.runtime.block_on(txn.rollback());
         }
     }
 }
@@ -1270,6 +1302,7 @@ impl TiKvStorageReadableTransaction<'_> {
         TiKvStorageReader {
             storage: self.storage.clone(),
             txn: TiKvReaderTxn::Borrowed(self.txn.as_ref().unwrap()),
+            str_cache: RefCell::new(HashMap::new()),
         }
     }
 
