@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -16,15 +19,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
 
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -35,7 +40,7 @@ jobs:
             ${{ runner.os }}-cargo-test-
 
       - name: Run tests (our crates, excluding TiKV integration)
-        run: cargo test -p oxigraph-server -p oxigraph-shacl -p oxigraph-coprocessor
+        run: cargo test -p oxigraph-server -p oxigraph-shacl -p oxigraph-coprocessor -p oxigraph-cdc
 
       - name: Run upstream oxigraph tests (excluding TiKV)
         run: cargo test -p oxigraph -- --skip tikv
@@ -47,15 +52,17 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
 
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -67,34 +74,76 @@ jobs:
 
       - name: Start TiKV cluster
         run: |
+          set -euo pipefail
+
           # Start PD
           docker run -d --name pd --net=host pingcap/pd:v8.5.0 \
             --name=pd --client-urls=http://0.0.0.0:2379 \
             --peer-urls=http://0.0.0.0:2380 \
             --advertise-client-urls=http://127.0.0.1:2379 \
-            --advertise-peer-urls=http://127.0.0.1:2380
+            --advertise-peer-urls=http://127.0.0.1:2380 \
+            --data-dir=/tmp/pd-data
 
-          # Wait for PD
+          # Wait for PD to be healthy
+          echo "Waiting for PD..."
+          PD_READY=false
           for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:2379/pd/api/v1/health && break
+            if curl -sf http://127.0.0.1:2379/pd/api/v1/health > /dev/null 2>&1; then
+              echo "PD healthy after ${i} attempts"
+              PD_READY=true
+              break
+            fi
             sleep 2
           done
+          if [ "$PD_READY" != "true" ]; then
+            echo "::error::PD failed to start within 60 seconds"
+            docker logs pd
+            exit 1
+          fi
 
           # Start TiKV
           docker run -d --name tikv --net=host pingcap/tikv:v8.5.0 \
             --addr=0.0.0.0:20160 \
             --advertise-addr=127.0.0.1:20160 \
-            --pd=127.0.0.1:2379
+            --pd=127.0.0.1:2379 \
+            --data-dir=/tmp/tikv-data
 
-          # Wait for TiKV to register with PD
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:2379/pd/api/v1/stores | grep -q '"state_name":"Up"'; then
-              echo "TiKV cluster ready"
+          # Wait for TiKV store to register and become Up
+          echo "Waiting for TiKV to register with PD..."
+          TIKV_READY=false
+          for i in $(seq 1 60); do
+            STORES=$(curl -sf http://127.0.0.1:2379/pd/api/v1/stores 2>/dev/null || echo "")
+            if echo "$STORES" | grep -q '"state_name":"Up"'; then
+              echo "TiKV store is Up after ${i} attempts"
+              TIKV_READY=true
               break
             fi
-            echo "Waiting for TiKV... ($i/30)"
-            sleep 5
+            echo "Waiting for TiKV... ($i/60)"
+            sleep 3
           done
+          if [ "$TIKV_READY" != "true" ]; then
+            echo "::error::TiKV failed to register within 180 seconds"
+            docker logs tikv
+            exit 1
+          fi
+
+          # Wait for region leader election (TiKV needs initial region setup)
+          echo "Waiting for region leader..."
+          REGION_READY=false
+          for i in $(seq 1 20); do
+            REGIONS=$(curl -sf http://127.0.0.1:2379/pd/api/v1/regions 2>/dev/null || echo "")
+            if echo "$REGIONS" | grep -q '"leader"'; then
+              echo "Region leader elected after ${i} attempts"
+              REGION_READY=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$REGION_READY" != "true" ]; then
+            echo "::warning::No region leader detected — tests may fail"
+          fi
+
+          echo "TiKV cluster ready"
 
       - name: Run TiKV integration tests
         env:
@@ -106,17 +155,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: stable
           components: clippy, rustfmt
 
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -127,26 +177,27 @@ jobs:
             ${{ runner.os }}-cargo-lint-
 
       - name: Check formatting (our crates)
-        run: cargo fmt -p oxigraph-server -p oxigraph-shacl -p oxigraph-tikv -p oxigraph-coprocessor -- --check
+        run: cargo fmt -p oxigraph-server -p oxigraph-shacl -p oxigraph-tikv -p oxigraph-coprocessor -p oxigraph-cdc -- --check
 
       - name: Run clippy (our crates)
-        run: cargo clippy -p oxigraph-server -p oxigraph-shacl -p oxigraph-coprocessor --all-targets -- -D warnings
+        run: cargo clippy -p oxigraph-server -p oxigraph-shacl -p oxigraph-coprocessor -p oxigraph-cdc --all-targets -- -D warnings
 
   security:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           submodules: recursive
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
       - name: Run cargo audit
         run: cargo audit
-        continue-on-error: true
