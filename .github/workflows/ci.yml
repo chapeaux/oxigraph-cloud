@@ -72,15 +72,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-tikv-
 
+      - name: Raise file descriptor limits for TiKV
+        run: |
+          # TiKV requires >= 123880 open file descriptors.
+          # GitHub Actions Docker daemon enforces its own default ulimits,
+          # so we must reconfigure and restart the daemon.
+          sudo sysctl -w fs.nr_open=1048576
+          sudo bash -c 'cat > /etc/docker/daemon.json <<DAEMONJSON
+          {
+            "default-ulimits": {
+              "nofile": { "Name": "nofile", "Hard": 1048576, "Soft": 1048576 }
+            }
+          }
+          DAEMONJSON'
+          sudo systemctl restart docker
+          # Verify
+          docker run --rm alpine sh -c 'ulimit -n'
+
       - name: Start TiKV cluster
         run: |
           set -euo pipefail
-
-          # Raise system file descriptor limits for TiKV (requires >= 123880).
-          # GitHub Actions runners default to hard limit 65536 which is too low.
-          sudo sysctl -w fs.nr_open=1048576
-          sudo prlimit --pid $$ --nofile=1048576:1048576
-          ulimit -n 1048576
 
           # Start PD
           docker run -d --name pd --net=host \
