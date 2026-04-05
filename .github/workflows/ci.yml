@@ -76,8 +76,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Raise file descriptor limit for TiKV (requires >= 123880)
-          ulimit -n 1048576 || true
+          # Raise system file descriptor limits for TiKV (requires >= 123880).
+          # GitHub Actions runners default to hard limit 65536 which is too low.
+          sudo sysctl -w fs.nr_open=1048576
+          sudo prlimit --pid $$ --nofile=1048576:1048576
+          ulimit -n 1048576
 
           # Start PD
           docker run -d --name pd --net=host \
