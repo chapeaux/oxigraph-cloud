@@ -76,8 +76,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Raise file descriptor limit for TiKV (requires >= 123880)
+          ulimit -n 1048576 || true
+
           # Start PD
-          docker run -d --name pd --net=host pingcap/pd:v8.5.0 \
+          docker run -d --name pd --net=host \
+            --ulimit nofile=1048576:1048576 \
+            pingcap/pd:v8.5.0 \
             --name=pd --client-urls=http://0.0.0.0:2379 \
             --peer-urls=http://0.0.0.0:2380 \
             --advertise-client-urls=http://127.0.0.1:2379 \
@@ -102,7 +107,9 @@ jobs:
           fi
 
           # Start TiKV
-          docker run -d --name tikv --net=host pingcap/tikv:v8.5.0 \
+          docker run -d --name tikv --net=host \
+            --ulimit nofile=1048576:1048576 \
+            pingcap/tikv:v8.5.0 \
             --addr=0.0.0.0:20160 \
             --advertise-addr=127.0.0.1:20160 \
             --pd=127.0.0.1:2379 \

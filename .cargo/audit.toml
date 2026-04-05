@@ -1,0 +1,10 @@
+# cargo-audit configuration
+# https://docs.rs/cargo-audit
+
+[advisories]
+# RUSTSEC-2024-0437: protobuf 2.28.0 DoS via uncontrolled recursion.
+# Transitive dep: tikv-client 0.4.0 → prometheus 0.13 → protobuf 2.x
+# Not exploitable in our context: protobuf is only used internally by
+# prometheus for metrics serialization, never for parsing untrusted input.
+# Will be resolved when tikv-client upgrades to prometheus 0.14+ / protobuf 3.x.
+ignore = ["RUSTSEC-2024-0437"]
