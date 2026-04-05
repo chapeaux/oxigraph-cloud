@@ -16,6 +16,8 @@ pub struct Changelog {
     counter: AtomicU64,
     /// Serialize changelog writes to avoid interleaving
     write_lock: Mutex<()>,
+    #[cfg(feature = "cdc")]
+    cdc_sender: Mutex<Option<oxigraph_cdc::ChangeEventSender>>,
 }
 
 /// A changelog entry representing a committed transaction.
@@ -36,6 +38,16 @@ impl Changelog {
             retain,
             counter: AtomicU64::new(1),
             write_lock: Mutex::new(()),
+            #[cfg(feature = "cdc")]
+            cdc_sender: Mutex::new(None),
+        }
+    }
+
+    /// Set the CDC event sender for broadcasting change events.
+    #[cfg(feature = "cdc")]
+    pub fn set_cdc_sender(&self, sender: oxigraph_cdc::ChangeEventSender) {
+        if let Ok(mut guard) = self.cdc_sender.lock() {
+            *guard = Some(sender);
         }
     }
 
@@ -133,6 +145,22 @@ impl Changelog {
             undoable = undoable,
             "Changelog entry recorded"
         );
+
+        #[cfg(feature = "cdc")]
+        {
+            if let Ok(guard) = self.cdc_sender.lock() {
+                if let Some(sender) = &*guard {
+                    let cdc_event = oxigraph_cdc::ChangeEvent {
+                        id: entry.id,
+                        timestamp: entry.timestamp.clone(),
+                        operation: entry.operation.clone(),
+                        inserted: entry.inserted.clone(),
+                        removed: entry.removed.clone(),
+                    };
+                    drop(sender.send(cdc_event));
+                }
+            }
+        }
 
         Ok(entry)
     }

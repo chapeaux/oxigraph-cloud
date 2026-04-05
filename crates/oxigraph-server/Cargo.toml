@@ -25,6 +25,7 @@ otel = [
     "dep:prometheus",
     "dep:tokio",
 ]
+cdc = ["dep:oxigraph-cdc", "dep:tokio"]
 integration-tests = ["oxigraph-tikv/integration-tests"]
 
 [dependencies]
@@ -37,11 +38,12 @@ opentelemetry-otlp = { workspace = true, optional = true, features = ["grpc-toni
 opentelemetry-appender-tracing = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true, features = ["rt"] }
+tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "sync", "time"] }
 oxhttp = { workspace = true, features = ["flate2"] }
 oxigraph = { workspace = true, default-features = false }
 oxigraph-tikv = { path = "../oxigraph-tikv", optional = true }
 oxigraph-shacl = { path = "../oxigraph-shacl", optional = true }
+oxigraph-cdc = { path = "../oxigraph-cdc", optional = true }
 oxiri.workspace = true
 flate2.workspace = true
 tracing.workspace = true

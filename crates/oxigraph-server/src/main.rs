@@ -119,6 +119,23 @@ struct Args {
     #[arg(long, default_value_t = 60)]
     transaction_timeout: u64,
 
+    /// Port for the CDC notification server. Enables CDC when set.
+    /// The CDC server provides W3C Solid Notifications via WebSocket and SSE.
+    #[cfg(feature = "cdc")]
+    #[arg(long)]
+    cdc_port: Option<u16>,
+
+    /// CDC subscriber buffer size (max queued notifications per subscriber, default 1024).
+    #[cfg(feature = "cdc")]
+    #[arg(long, default_value_t = 1024)]
+    cdc_buffer_size: usize,
+
+    /// CDC batching window in milliseconds (default 100).
+    /// Events within this window are merged into a single notification.
+    #[cfg(feature = "cdc")]
+    #[arg(long, default_value_t = 100)]
+    cdc_batch_ms: u64,
+
     /// Enable OpenTelemetry metrics (/metrics endpoint) and optional OTLP tracing.
     #[arg(long, default_value_t = false)]
     otel: bool,
@@ -225,6 +242,40 @@ fn main() -> anyhow::Result<()> {
     if args.changelog {
         tracing::info!(retain = args.changelog_retain, "Changelog enabled");
     }
+
+    // CDC notification server
+    #[cfg(feature = "cdc")]
+    let _cdc_description_url = if let Some(cdc_port) = args.cdc_port {
+        let cdc_config = oxigraph_cdc::CdcConfig {
+            bind_port: cdc_port,
+            main_server_url: format!("http://{}", args.bind),
+            buffer_size: args.cdc_buffer_size,
+            batch_window: Duration::from_millis(args.cdc_batch_ms),
+        };
+        let (sender, cdc_server) = oxigraph_cdc::CdcServer::new(cdc_config);
+        changelog.set_cdc_sender(sender);
+
+        let description_url = format!("http://0.0.0.0:{cdc_port}/.well-known/solid");
+
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to create CDC tokio runtime");
+                    std::process::exit(1);
+                });
+            if let Err(e) = rt.block_on(cdc_server.run()) {
+                tracing::error!(error = %e, "CDC server exited with error");
+            }
+        });
+
+        tracing::info!(cdc_port, "CDC notification server started");
+        Some(description_url)
+    } else {
+        None
+    };
 
     // Spawn background cleanup for expired transactions
     {

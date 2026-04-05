@@ -24,6 +24,7 @@ members = [
     "crates/oxigraph-shacl",
     "crates/oxigraph-server",
     "crates/oxigraph-coprocessor",
+    "crates/oxigraph-cdc",
     # Benchmark crate
     "tests/benchmark",
 ]
@@ -124,6 +125,8 @@ opentelemetry-otlp = "0.31"
 opentelemetry-appender-tracing = "0.31"
 tracing-opentelemetry = "0.32"
 prometheus = "0.13"
+axum = { version = "0.8", features = ["ws"] }
+tokio-stream = "0.1"
 
 [workspace.lints.rust]
 absolute_paths_not_starting_with_crate = "warn"

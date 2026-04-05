@@ -1,0 +1,23 @@
+[package]
+name = "oxigraph-cdc"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "W3C Solid Notifications Protocol CDC engine for Oxigraph Cloud"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tracing.workspace = true
+oxrdf.workspace = true
+dashmap.workspace = true
+uuid = { version = "1", features = ["v4"] }
+flate2.workspace = true
+
+[lints]
+workspace = true
