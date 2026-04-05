@@ -10,6 +10,7 @@ pub enum ChannelType {
 
 /// An active notification subscription.
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "fields read by server.rs handlers via pub access")]
 pub struct Subscription {
     pub id: String,
     pub topic: String,
@@ -40,9 +41,5 @@ impl SubscriptionRegistry {
 
     pub fn remove(&self, id: &str) -> Option<Subscription> {
         self.subscriptions.remove(id).map(|(_, s)| s)
-    }
-
-    pub fn count(&self) -> usize {
-        self.subscriptions.len()
     }
 }

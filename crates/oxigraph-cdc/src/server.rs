@@ -3,17 +3,17 @@ use crate::notification;
 use crate::subscription::{ChannelType, Subscription, SubscriptionRegistry};
 use axum::extract::ws;
 use axum::extract::{Path, State, WebSocketUpgrade};
-use axum::response::sse;
 use axum::response::Sse;
+use axum::response::sse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
 /// Configuration for the CDC notification server.
 #[derive(Clone)]

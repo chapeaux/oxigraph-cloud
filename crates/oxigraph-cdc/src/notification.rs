@@ -1,6 +1,6 @@
 use crate::channel::ChangeEvent;
 use oxrdf::Quad;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::fmt::Write as _;
 
 /// Format a single `ChangeEvent` as an AS2 JSON-LD notification.
