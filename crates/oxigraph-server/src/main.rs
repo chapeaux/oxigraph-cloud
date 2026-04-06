@@ -13,6 +13,7 @@ use oxhttp::model::header::{
 };
 use oxhttp::model::{Body, HeaderValue, Method, Request, Response, StatusCode};
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
+use oxigraph::model::Quad;
 use oxigraph::sparql::results::{QueryResultsFormat, QueryResultsSerializer};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
@@ -27,7 +28,7 @@ use std::sync::Mutex;
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 use std::{fmt, str};
-use transactions::{TransactionError, TransactionRegistry};
+use transactions::{BufferedOp, TransactionError, TransactionRegistry};
 use url::form_urlencoded;
 
 #[cfg(feature = "shacl")]
@@ -584,6 +585,10 @@ fn handle_request(
             let result = evaluate_sparql_update(&store, &update);
             if result.is_ok() {
                 validate_after_write(&store, validator)?;
+                if changelog.is_enabled() {
+                    let ops = vec![BufferedOp::SparqlUpdate(update)];
+                    drop(changelog.record(&store, &ops, "update"));
+                }
             }
             result
         }
@@ -595,10 +600,18 @@ fn handle_request(
                 RdfFormat::from_media_type(&ct).ok_or_else(|| unsupported_media_type(&ct))?;
             let parser = RdfParser::from_format(format);
             let body = limited_body_with_max(request, max_upload_size)?;
+            let quads: Vec<Quad> = RdfParser::from_format(format)
+                .for_slice(&body)
+                .flatten()
+                .collect();
             store
                 .load_from_reader(parser, body.as_slice())
                 .map_err(internal_server_error)?;
             validate_after_write(&store, validator)?;
+            if changelog.is_enabled() && !quads.is_empty() {
+                let ops = vec![BufferedOp::InsertQuads(quads)];
+                drop(changelog.record(&store, &ops, "store"));
+            }
             Response::builder()
                 .status(StatusCode::NO_CONTENT)
                 .body(Body::empty())
@@ -740,19 +753,23 @@ fn handle_request_core(
             check_write_auth(request, write_key)?;
             tracing::info!("SPARQL UPDATE");
             let ct = content_type(request).ok_or_else(|| bad_request("No Content-Type given"))?;
-            if ct == "application/sparql-update" {
-                let update = limited_string_body(request)?;
-                evaluate_sparql_update(&store, &update)
+            let update = if ct == "application/sparql-update" {
+                limited_string_body(request)?
             } else if ct == "application/x-www-form-urlencoded" {
                 let body = limited_body(request)?;
-                let update = form_urlencoded::parse(&body)
+                form_urlencoded::parse(&body)
                     .find(|(k, _)| k == "update")
                     .map(|(_, v)| v.into_owned())
-                    .ok_or_else(|| bad_request("Missing 'update' parameter in form body"))?;
-                evaluate_sparql_update(&store, &update)
+                    .ok_or_else(|| bad_request("Missing 'update' parameter in form body"))?
             } else {
-                Err(unsupported_media_type(&ct))
+                return Err(unsupported_media_type(&ct));
+            };
+            let result = evaluate_sparql_update(&store, &update);
+            if result.is_ok() && changelog.is_enabled() {
+                let ops = vec![BufferedOp::SparqlUpdate(update)];
+                drop(changelog.record(&store, &ops, "update"));
             }
+            result
         }
 
         // --- Graph Store Protocol: load data (write - requires auth) ---
@@ -765,9 +782,17 @@ fn handle_request_core(
             let parser = RdfParser::from_format(format);
             // SEC-14: Apply upload body size limit
             let body = limited_body_with_max(request, max_upload_size)?;
+            let quads: Vec<Quad> = RdfParser::from_format(format)
+                .for_slice(&body)
+                .flatten()
+                .collect();
             store
                 .load_from_reader(parser, body.as_slice())
                 .map_err(internal_server_error)?;
+            if changelog.is_enabled() && !quads.is_empty() {
+                let ops = vec![BufferedOp::InsertQuads(quads)];
+                drop(changelog.record(&store, &ops, "store"));
+            }
             Response::builder()
                 .status(StatusCode::NO_CONTENT)
                 .body(Body::empty())

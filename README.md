@@ -15,6 +15,7 @@ Oxigraph Cloud-Native extends the [Oxigraph](https://github.com/oxigraph/oxigrap
 - **SHACL validation via rudof** -- three modes: Off (default), Warn (log but accept), Enforce (reject with HTTP 422)
 - **Write authentication** -- API key protection for write operations via `--write-key` or `OXIGRAPH_WRITE_KEY`
 - **TiKV Coprocessor pushdown** -- scan, filter, aggregate, and bloom filter semi-join operations pushed to Region-local execution
+- **Change Data Capture (CDC)** -- real-time W3C Solid Notifications via WebSocket and SSE with ActivityStreams 2.0 events and RDF-star deltas (feature-gated via `--features cdc`)
 - **Cloud-native deployment** -- Helm chart with OpenShift Route support, health/readiness probes, network policies
 - **HTTP transaction API** -- begin/commit/rollback transactions over HTTP with buffered multi-step writes
 - **Changelog with undo** -- opt-in changelog recording of write operations, with `POST /changelog/{id}/undo` to revert
@@ -200,6 +201,81 @@ docker compose -f docker-compose.tikv.yml down -v    # stop and delete data
 
 For cluster sizing, Region tuning, backup/restore, and monitoring, see [docs/tikv-operations-guide.md](docs/tikv-operations-guide.md).
 
+## Change Data Capture (CDC)
+
+Real-time change notifications via the W3C Solid Notifications Protocol. Build with the `cdc` feature:
+
+```bash
+cargo build --release -p oxigraph-server --features cdc
+```
+
+### Start with CDC enabled
+
+```bash
+./target/release/oxigraph-cloud \
+  --changelog --cdc-port 7879 \
+  --location /tmp/oxigraph-data
+```
+
+The CDC server runs on a separate port alongside the main SPARQL server. Changelog must be enabled (`--changelog`) for CDC events to be emitted.
+
+### Discover notification channels
+
+```bash
+curl http://localhost:7879/.well-known/solid
+```
+
+### Subscribe to changes
+
+```bash
+# Create a WebSocket subscription
+curl -X POST http://localhost:7879/subscription \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "WebSocketChannel2023",
+    "topic": "http://127.0.0.1:7878/"
+  }'
+
+# Or create an SSE subscription
+curl -X POST http://localhost:7879/subscription \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "StreamingHTTPChannel2023",
+    "topic": "http://127.0.0.1:7878/"
+  }'
+```
+
+The response includes a `receiveFrom` URL. Connect to it via WebSocket or SSE to receive notifications.
+
+### Notification format
+
+Notifications use ActivityStreams 2.0 JSON-LD with RDF-star deltas:
+
+```json
+{
+  "@context": [
+    "https://www.w3.org/ns/activitystreams",
+    "https://www.w3.org/ns/solid/notifications/v1"
+  ],
+  "type": "Update",
+  "published": "2026-04-05T12:00:00Z",
+  "object": "http://127.0.0.1:7878/",
+  "state": "42",
+  "content": {
+    "oxcdc:inserted": "<http://example.org/s> <http://example.org/p> \"value\" .\n",
+    "oxcdc:removed": ""
+  }
+}
+```
+
+### CDC configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--cdc-port` | (none) | Port for CDC server (enables CDC when set) |
+| `--cdc-buffer-size` | `1024` | Max queued notifications per subscriber |
+| `--cdc-batch-ms` | `100` | Batching window in milliseconds |
+
 ## SHACL Validation
 
 ### Upload shapes
@@ -286,7 +362,7 @@ curl -X POST http://127.0.0.1:7878/changelog/1/undo
 curl http://127.0.0.1:7878/changelog/1
 ```
 
-Changelog entries are stored as RDF in the `<urn:oxigraph:changelog>` named graph and are retained up to `--changelog-retain` entries (default: 100).
+Changelog entries are stored as RDF in the `<urn:oxigraph:changelog>` named graph and are retained up to `--changelog-retain` entries (default: 100). All write paths are recorded: transaction commits, direct SPARQL UPDATE (`POST /update`), and graph uploads (`POST /store`). When CDC is enabled, changelog entries are automatically broadcast as real-time notifications.
 
 ## OpenTelemetry Observability
 
@@ -335,6 +411,9 @@ Traces are exported via OTLP gRPC to the configured endpoint (e.g., Jaeger, Open
 | `--changelog` | `false` | Enable changelog recording for write operations |
 | `--changelog-retain` | `100` | Maximum changelog entries to retain (0 = unlimited) |
 | `--transaction-timeout` | `60` | Transaction idle timeout in seconds |
+| `--cdc-port` | (none) | CDC notification server port (requires `cdc` feature) |
+| `--cdc-buffer-size` | `1024` | Max queued CDC notifications per subscriber |
+| `--cdc-batch-ms` | `100` | CDC batching window in milliseconds |
 | `--otel` | `false` | Enable Prometheus `/metrics` endpoint (requires `otel` feature) |
 | `--otel-endpoint` | (none) | OTLP endpoint for trace export (env: `OTEL_EXPORTER_OTLP_ENDPOINT`) |
 | `--otel-service-name` | `oxigraph-cloud` | OpenTelemetry service name (env: `OTEL_SERVICE_NAME`) |
@@ -359,6 +438,7 @@ oxigraph-cloud/
     oxigraph-tikv/             # TiKV config types and integration tests
     oxigraph-shacl/            # SHACL validation via rudof
     oxigraph-coprocessor/      # TiKV Coprocessor plugin (cdylib)
+    oxigraph-cdc/              # W3C Solid Notifications CDC engine
   deploy/
     helm/oxigraph-cloud/       # Helm chart (default, tikv, sandbox values)
     k8s/                       # Raw Kubernetes manifests
@@ -377,6 +457,7 @@ Key design decisions:
 - **Enum dispatch** (not generics) keeps `Store` non-generic while supporting multiple backends at near-zero overhead (ADR-002)
 - **Sync trait with `block_on` bridge** avoids async infection of the iterator-heavy SPARQL evaluator (ADR-003)
 - **1-byte key prefix** maps Oxigraph's 11 column families to TiKV's flat key space, preserving lexicographic scan order
+- **Separate CDC process** runs an axum server on a dedicated tokio runtime in the same process, connected to the sync changelog via `tokio::sync::broadcast`
 
 For the full architecture guide, see [docs/architecture-guide.md](docs/architecture-guide.md).
 
@@ -447,7 +528,7 @@ cargo bench -p oxigraph --features tikv
 | [docs/tikv-operations-guide.md](docs/tikv-operations-guide.md) | TiKV cluster operations guide |
 | [docs/backup-restore.md](docs/backup-restore.md) | TiKV BR backup/restore procedures |
 | [docs/shacl-api-spec.md](docs/shacl-api-spec.md) | SHACL REST API specification |
-| [docs/coprocessor-pushdown-mapping.md](docs/coprocessor-pushdown-mapping.md) | SPARQL operator → Coprocessor mapping |
+| [docs/coprocessor-pushdown-mapping.md](docs/coprocessor-pushdown-mapping.md) | SPARQL operator -> Coprocessor mapping |
 | [docs/sandbox-quickstart.md](docs/sandbox-quickstart.md) | Developer Sandbox deployment guide |
 | [docs/security-deployment.md](docs/security-deployment.md) | TLS, auth, network policies, container security |
 | [docs/operations-runbook.md](docs/operations-runbook.md) | Day-to-day operations and incident response |

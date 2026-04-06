@@ -11,6 +11,7 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 | `crates/oxigraph-shacl/` | SHACL validation via rudof (validator, shapes, report) |
 | `crates/oxigraph-tikv/` | TiKV config types and integration tests |
 | `crates/oxigraph-coprocessor/` | TiKV Coprocessor plugin (scan, filter, aggregate, bloom) |
+| `crates/oxigraph-cdc/` | W3C Solid Notifications CDC engine (WebSocket, SSE, AS2 JSON-LD) |
 | `helm/oxigraph-cloud/` | Oxigraph Helm chart (values.yaml, values-tikv.yaml, values-sandbox.yaml) |
 | `helm/tikv-cluster/` | TiKV cluster Helm chart (PD + TiKV StatefulSets, services) |
 | `deploy/helm/oxigraph-cloud/` | Legacy Helm chart location |
@@ -25,13 +26,23 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 ## Key Implementation Details
 
 - **StorageBackend trait**: `oxigraph/lib/oxigraph/src/storage/backend_trait.rs`
-- **TiKV backend**: `oxigraph/lib/oxigraph/src/storage/tikv.rs` (~1520 lines)
+- **TiKV backend**: `oxigraph/lib/oxigraph/src/storage/tikv.rs` (~1570 lines)
+  - ID2STR read cache (`RefCell<HashMap>` per reader, >90% hit rate)
+  - Scan batch size 4096 (was 512)
+  - Transaction reuse across scan batches (lazy init, single txn per iterator)
+  - Read-only snapshot transactions via `TransactionOptions`
 - **Server**: `crates/oxigraph-server/src/main.rs` — SHACL validation-on-ingest wired into `/update` and `/store POST`
 - **SHACL mode flag**: `--shacl-mode off|warn|enforce` (server accepts `strict` as alias for `enforce`)
 - **SHACL mode API**: `PUT /shacl/mode` expects JSON body `{"mode": "enforce"}`
 - **Write auth**: `--write-key` or `OXIGRAPH_WRITE_KEY` env var, `Authorization: Bearer <key>` header
 - **Transactions**: `crates/oxigraph-server/src/transactions.rs` — buffered ops replayed on commit (`Transaction<'a>` borrows Store, can't span HTTP requests)
-- **Changelog**: `crates/oxigraph-server/src/changelog.rs` — stored in `<urn:oxigraph:changelog>` named graph, opt-in via `--changelog`
+- **Changelog**: `crates/oxigraph-server/src/changelog.rs` — stored in `<urn:oxigraph:changelog>` named graph, opt-in via `--changelog`. Records all write paths: transaction commits (operation `"transaction"`), direct SPARQL UPDATE (operation `"update"`), and `/store` POST (operation `"store"`)
+- **CDC**: `crates/oxigraph-cdc/` — W3C Solid Notifications Protocol, feature-gated behind `cdc`
+  - Separate axum server on dedicated tokio runtime (same process, different port)
+  - `tokio::sync::broadcast` bridge from sync changelog to async CDC server
+  - WebSocket (WebSocketChannel2023) and SSE (StreamingHTTPChannel2023)
+  - AS2 JSON-LD notifications with RDF-star N-Quads deltas
+  - Configurable batching window, backpressure via bounded channels
 - **TiKV connection retry**: exponential backoff (5 attempts, 100ms→1.6s) in `TiKvStorage::connect_with_config`
 - **Telemetry**: `crates/oxigraph-server/src/telemetry.rs` — Prometheus metrics via `prometheus` crate, OTLP traces via `tracing-opentelemetry` (feature-gated behind `otel`)
 
@@ -59,8 +70,11 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 | `shacl` | Yes | SHACL validation via rudof |
 | `tikv` | No | TiKV distributed storage backend |
 | `otel` | No | OpenTelemetry metrics + traces (Prometheus `/metrics`, OTLP export) |
+| `cdc` | No | W3C Solid Notifications CDC engine (WebSocket + SSE) |
 
 ## HTTP API Summary
+
+### Main Server (default port 7878)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -88,6 +102,15 @@ Cloud-native distributed SPARQL + SHACL database. All 8 implementation phases co
 | POST | `/shacl/validate` | No | Trigger on-demand validation |
 | GET | `/shacl/mode` | No | Get SHACL mode |
 | PUT | `/shacl/mode` | Write | Set SHACL mode |
+
+### CDC Server (configurable port, `--cdc-port`, requires `cdc` feature)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/.well-known/solid` | SNP discovery (JSON-LD description resource) |
+| POST | `/subscription` | Create WebSocket or SSE subscription |
+| GET | `/channel/ws/{id}` | WebSocket notification channel |
+| GET | `/channel/sse/{id}` | Server-Sent Events notification channel |
 
 ## Reference Documentation
 
