@@ -14,6 +14,7 @@ use oxhttp::model::header::{
 use oxhttp::model::{Body, HeaderValue, Method, Request, Response, StatusCode};
 use oxigraph::io::{RdfFormat, RdfParser, RdfSerializer};
 use oxigraph::model::Quad;
+use std::collections::HashSet;
 use oxigraph::sparql::results::{QueryResultsFormat, QueryResultsSerializer};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
@@ -582,15 +583,12 @@ fn handle_request(
             } else {
                 return Err(unsupported_media_type(&ct));
             };
-            let result = evaluate_sparql_update(&store, &update);
-            if result.is_ok() {
-                validate_after_write(&store, validator)?;
-                if changelog.is_enabled() {
-                    let ops = vec![BufferedOp::SparqlUpdate(update)];
-                    drop(changelog.record(&store, &ops, "update"));
-                }
+            let (resp, ops) = evaluate_sparql_update_with_diff(&store, &update, changelog)?;
+            validate_after_write(&store, validator)?;
+            if let Some(ops) = ops {
+                drop(changelog.record(&store, &ops, "update"));
             }
-            result
+            Ok(resp)
         }
         ("/store", "POST") => {
             check_write_auth(request, write_key)?;
@@ -764,12 +762,11 @@ fn handle_request_core(
             } else {
                 return Err(unsupported_media_type(&ct));
             };
-            let result = evaluate_sparql_update(&store, &update);
-            if result.is_ok() && changelog.is_enabled() {
-                let ops = vec![BufferedOp::SparqlUpdate(update)];
+            let (resp, ops) = evaluate_sparql_update_with_diff(&store, &update, changelog)?;
+            if let Some(ops) = ops {
                 drop(changelog.record(&store, &ops, "update"));
             }
-            result
+            Ok(resp)
         }
 
         // --- Graph Store Protocol: load data (write - requires auth) ---
@@ -1429,6 +1426,56 @@ fn evaluate_sparql_update(store: &Store, update: &str) -> Result<Response<Body>,
         .status(StatusCode::NO_CONTENT)
         .body(Body::empty())
         .map_err(internal_server_error)
+}
+
+/// Max store size (in quads) for which we'll compute a before/after diff
+/// to capture the actual inserted/removed quads from a SPARQL UPDATE.
+/// Above this threshold we record only metadata (no quad deltas).
+const MAX_DIFF_STORE_SIZE: usize = 1_000_000;
+
+/// Execute a SPARQL UPDATE with before/after diff to capture actual quad deltas.
+/// Returns the HTTP response and the changelog ops (if changelog is enabled).
+fn evaluate_sparql_update_with_diff(
+    store: &Store,
+    update: &str,
+    changelog: &Changelog,
+) -> Result<(Response<Body>, Option<Vec<BufferedOp>>), HttpError> {
+    if !changelog.is_enabled() {
+        let resp = evaluate_sparql_update(store, update)?;
+        return Ok((resp, None));
+    }
+
+    // Take a snapshot of current quads (if store is small enough)
+    let store_size = store.len().unwrap_or(0);
+    if store_size > MAX_DIFF_STORE_SIZE {
+        // Store too large for diff — record SPARQL text only (empty deltas)
+        let resp = evaluate_sparql_update(store, update)?;
+        let ops = vec![BufferedOp::SparqlUpdate(update.to_owned())];
+        return Ok((resp, Some(ops)));
+    }
+
+    let before: HashSet<Quad> = store.iter().flatten().collect();
+
+    let resp = evaluate_sparql_update(store, update)?;
+
+    let after: HashSet<Quad> = store.iter().flatten().collect();
+    let inserted: Vec<Quad> = after.difference(&before).cloned().collect();
+    let removed: Vec<Quad> = before.difference(&after).cloned().collect();
+
+    let ops = if inserted.is_empty() && removed.is_empty() {
+        None
+    } else {
+        let mut ops = Vec::new();
+        if !inserted.is_empty() {
+            ops.push(BufferedOp::InsertQuads(inserted));
+        }
+        if !removed.is_empty() {
+            ops.push(BufferedOp::RemoveQuads(removed));
+        }
+        Some(ops)
+    };
+
+    Ok((resp, ops))
 }
 
 // ---------------------------------------------------------------------------
